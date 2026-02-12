@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import logging
 import random
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Any, cast
@@ -50,13 +51,31 @@ class MT5Client:
             raise RuntimeError("MetaTrader5 package is unavailable in this environment.")
         self._mt5 = cast(Any, mt5)
 
+    def startup_preflight(self) -> dict[str, str]:
+        return {
+            "terminal_path": self._path or "<auto>",
+            "terminal_running": str(_is_process_running("terminal64.exe")),
+        }
+
     def connect(self) -> bool:
         if self._path:
             initialized = bool(self._mt5.initialize(path=self._path))
         else:
             initialized = bool(self._mt5.initialize())
         if not initialized:
-            self._logger.error("mt5 initialize failed: %s", self._last_error())
+            last_error = self._mt5.last_error()
+            self._logger.error(
+                "mt5 initialize failed: path=%s terminal_running=%s error=%s",
+                self._path or "<auto>",
+                _is_process_running("terminal64.exe"),
+                last_error,
+            )
+            if _extract_mt5_error_code(last_error) == -10005:
+                self._logger.error(
+                    "mt5 initialize IPC timeout (-10005). verify MT5 is open and connected, "
+                    ".env MT5_LOGIN/MT5_SERVER match the active terminal account, and "
+                    "MT5 Tools > Options > Expert Advisors > API is enabled."
+                )
             return False
 
         logged_in = bool(
@@ -67,9 +86,15 @@ class MT5Client:
             )
         )
         if not logged_in:
-            self._logger.error("mt5 login failed: %s", self._last_error())
+            self._logger.error(
+                "mt5 login failed: env_login=%s env_server=%s error=%s",
+                self._login,
+                self._server,
+                self._last_error(),
+            )
             self._mt5.shutdown()
             return False
+        self._log_active_account()
         return True
 
     def disconnect(self) -> None:
@@ -163,3 +188,41 @@ class MT5Client:
     def _last_error(self) -> str:
         err = self._mt5.last_error()
         return str(err)
+
+    def _log_active_account(self) -> None:
+        account = self._mt5.account_info()
+        if account is None:
+            self._logger.warning("mt5 login succeeded but account_info is unavailable")
+            return
+        active_login = getattr(account, "login", None)
+        active_server = getattr(account, "server", None)
+        self._logger.info(
+            "mt5 active account login=%s server=%s env_match_login=%s env_match_server=%s",
+            active_login,
+            active_server,
+            str(active_login) == str(self._login),
+            str(active_server) == str(self._server),
+        )
+
+
+def _is_process_running(process_name: str) -> bool:
+    if not process_name:
+        return False
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", f"IMAGENAME eq {process_name}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    return process_name.lower() in result.stdout.lower()
+
+
+def _extract_mt5_error_code(error: object) -> int | None:
+    if isinstance(error, tuple) and error:
+        code = error[0]
+        if isinstance(code, int):
+            return code
+    return None

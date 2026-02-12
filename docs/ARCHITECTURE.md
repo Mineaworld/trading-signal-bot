@@ -254,7 +254,7 @@ main.py          mt5_client     strategy      dedup_store     telegram
 |  |   MetaTrader 5     |  |   Python 3.10+     |  |
 |  |   Terminal          |  |   trading-signal-  |  |
 |  |   (logged in)      |  |   bot/             |  |
-|  |                    |  |   poetry run       |  |
+|  |                    |  |   python -m poetry |  |
 |  |                    |  |   trading-signal-  |  |
 |  |                    |  |   bot              |  |
 |  +--------------------+  +--------------------+  |

@@ -137,7 +137,7 @@
 | # | Test | How to Verify | Pass Criteria |
 |---|---|---|---|
 | 1 | All automated tests pass | `pytest tests/` | 0 failures |
-| 2 | Dry-run mode works | `poetry run trading-signal-bot --dry-run` | Signals print to console, no Telegram |
+| 2 | Dry-run mode works | `python -m poetry run trading-signal-bot --dry-run` | Signals print to console, no Telegram |
 | 3 | MT5 candle fetch works | Check logs for DataFrame shape | 450 bars per symbol, UTC timestamps |
 | 4 | Symbol alias works | Change XAUUSD to XAUUSDm in config | Bot uses XAUUSDm for MT5, XAUUSD in logs |
 | 5 | Tradability gate works | Run during weekend | Symbols skipped, logged as not tradable |

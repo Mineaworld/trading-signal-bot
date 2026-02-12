@@ -42,8 +42,10 @@ config/settings.yaml
 
 ```powershell
 python -m pip install poetry
-poetry install
+python -m poetry install
 ```
+
+If `poetry` is not on PATH in your shell, use `python -m poetry ...` commands.
 
 2. Create local env file:
 
@@ -69,25 +71,25 @@ If you have AWS credits, deploy on AWS Windows VPS first instead of keeping your
 Dry-run mode:
 
 ```powershell
-poetry run trading-signal-bot --dry-run
+python -m poetry run trading-signal-bot --dry-run
 ```
 
 Live mode:
 
 ```powershell
-poetry run trading-signal-bot
+python -m poetry run trading-signal-bot
 ```
 
 ## Test
 
 ```powershell
-poetry run pytest
+python -m poetry run pytest
 ```
 
 ## Lint + Type Check
 
 ```powershell
-poetry run ruff check .
-poetry run black --check .
-poetry run mypy src
+python -m poetry run ruff check .
+python -m poetry run black --check .
+python -m poetry run mypy src
 ```

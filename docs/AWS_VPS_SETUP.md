@@ -34,7 +34,7 @@ python -m pip install poetry
 
 ```powershell
 cd C:\trading-signal-bot
-poetry install
+python -m poetry install
 Copy-Item .env.example .env
 ```
 
@@ -58,28 +58,35 @@ Edit `.env` in `C:\trading-signal-bot` and set:
 
 Then verify `config/settings.yaml` symbol names match your broker.
 
+Important:
+- Keep `.env` `MT5_LOGIN` and `MT5_SERVER` equal to the account currently logged in inside MT5.
+- In MT5 `Tools -> Options -> Expert Advisors`, ensure API access stays enabled.
+
 ## 5. Verify MT5 Connection First
 From project folder:
 
 ```powershell
-python -m poetry run python .\tmp_mt5_check.py
+python -m poetry run python .\scripts\mt5_preflight.py
 ```
 
 Expected result:
-- `initialized = True`
-- `last_error = (1, 'Success')`
+- `initialized=True`
+- `login=True`
+- `env_login_matches_active_account=True`
+- `env_server_matches_active_server=True`
+- `terminal_api_flag=1`
 
 ## 6. Validate Bot Before Live
 Run dry-run:
 
 ```powershell
-poetry run trading-signal-bot --dry-run
+python -m poetry run trading-signal-bot --dry-run
 ```
 
 Then run live:
 
 ```powershell
-poetry run trading-signal-bot
+python -m poetry run trading-signal-bot
 ```
 
 Validate:
@@ -114,8 +121,13 @@ cd C:\trading-signal-bot
 ## 9. Troubleshooting
 - MT5 initialize fails:
   - Verify `MT5_TERMINAL_PATH` points to `terminal64.exe`.
+  - Run `python -m poetry run python .\scripts\mt5_preflight.py` and fix any failing checks.
   - Confirm MT5 account is logged in and server is correct.
   - Reopen MT5 once manually after Windows restart.
+- MT5 log says automated trading disabled after account change:
+  - Re-login the intended account in MT5 and wait for full synchronization.
+  - Re-check `.env` account/server match with preflight script.
+  - Re-enable API access in MT5 options if it was reset.
 - No Telegram notifications:
   - Recheck `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
   - Verify outbound internet from EC2.

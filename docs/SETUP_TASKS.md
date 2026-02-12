@@ -49,6 +49,7 @@ Mark each task with `[x]` when done.
   TELEGRAM_CHAT_ID=987654321
   ```
 - [ ] Verify `config/settings.yaml` symbol mappings match your broker
+- [ ] Confirm MT5 is logged into the same account as `.env` (`MT5_LOGIN` + `MT5_SERVER` must match active MT5 account)
 
 ---
 
@@ -61,15 +62,19 @@ Mark each task with `[x]` when done.
   ```
 - [ ] Install project dependencies:
   ```powershell
-  poetry install
+  python -m poetry install
   ```
 - [ ] Run tests to verify everything works:
   ```powershell
-  poetry run pytest
+  python -m poetry run pytest
+  ```
+- [ ] Run MT5 preflight checks:
+  ```powershell
+  python -m poetry run python .\scripts\mt5_preflight.py
   ```
 - [ ] Run in dry-run mode (no Telegram, console only):
   ```powershell
-  poetry run trading-signal-bot --dry-run
+  python -m poetry run trading-signal-bot --dry-run
   ```
 - [ ] Verify dry-run starts without errors and logs show "startup completed"
 
@@ -79,7 +84,7 @@ Mark each task with `[x]` when done.
 
 - [ ] Run live against demo account during market hours:
   ```powershell
-  poetry run trading-signal-bot
+  python -m poetry run trading-signal-bot
   ```
 - [ ] Confirm startup test message arrives in Telegram
 - [ ] Watch `logs/bot.log` for signal evaluation logs

@@ -11,7 +11,7 @@ It uses two layers:
 - Windows EC2 instance is already created and reachable by RDP.
 - Bot code is deployed on the instance (example path: `C:\trading-signal-bot`).
 - MT5 is installed, configured, and can log in successfully.
-- You can run the bot manually first (`poetry run trading-signal-bot`).
+- You can run the bot manually first (`python -m poetry run trading-signal-bot`).
 - You have IAM permissions to create roles and EventBridge schedules.
 - NSSM is installed on the instance (example path: `C:\tools\nssm\nssm.exe`).
 
@@ -193,7 +193,7 @@ Start-Service TradingSignalBot
 
 ```powershell
 cd C:\trading-signal-bot
-poetry run trading-signal-bot --dry-run
+python -m poetry run trading-signal-bot --dry-run
 ```
 
 ## Related Project Docs

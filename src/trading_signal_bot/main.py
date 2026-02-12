@@ -70,6 +70,12 @@ class TradingSignalBotApp:
         )
 
     def startup(self) -> None:
+        preflight = self._mt5.startup_preflight()
+        self._logger.info(
+            "mt5 startup preflight path=%s terminal_running=%s",
+            preflight["terminal_path"],
+            preflight["terminal_running"],
+        )
         if not self._mt5.connect():
             raise RuntimeError("startup failed: cannot connect/login MT5")
 
