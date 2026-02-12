@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import logging
 import random
 import time
@@ -14,10 +15,9 @@ from trading_signal_bot.models import Timeframe
 def _load_mt5_module() -> Any | None:
     """Load the optional MT5 runtime dependency only when needed."""
     try:
-        import MetaTrader5  # type: ignore[import-not-found,import-untyped]
+        return importlib.import_module("MetaTrader5")
     except Exception:  # pragma: no cover - runtime dependency on Windows MT5
         return None
-    return MetaTrader5
 
 
 @dataclass(frozen=True)
