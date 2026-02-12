@@ -10,10 +10,14 @@ import pandas as pd
 
 from trading_signal_bot.models import Timeframe
 
-try:
-    import MetaTrader5  # type: ignore[import-untyped]
-except Exception:  # pragma: no cover - runtime dependency on Windows MT5
-    MetaTrader5 = None
+
+def _load_mt5_module() -> Any | None:
+    """Load the optional MT5 runtime dependency only when needed."""
+    try:
+        import MetaTrader5 as mt5  # type: ignore[import-untyped]
+    except Exception:  # pragma: no cover - runtime dependency on Windows MT5
+        return None
+    return mt5
 
 
 @dataclass(frozen=True)
@@ -41,7 +45,7 @@ class MT5Client:
         self._alias_map = alias_map
         self._reconnect = reconnect
         self._logger = logging.getLogger(self.__class__.__name__)
-        self._mt5 = mt5_module if mt5_module is not None else MetaTrader5
+        self._mt5 = mt5_module if mt5_module is not None else _load_mt5_module()
         if self._mt5 is None:
             raise RuntimeError("MetaTrader5 package is unavailable in this environment.")
 
