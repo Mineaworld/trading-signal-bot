@@ -37,6 +37,8 @@ jobs:
         run: poetry run mypy src
 
       - name: Test
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: poetry run pytest
 
       - name: Build
