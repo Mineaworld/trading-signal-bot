@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Secrets and runtime state
+.env
+config/.env
+data/
+logs/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Local scratch / runtime dumps
+trading_data/
+tmp_*.py
+*.log
+
+AGENTS.md
+
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

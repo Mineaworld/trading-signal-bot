@@ -1,0 +1,60 @@
+[tool.poetry]
+name = "trading-signal-bot"
+version = "0.1.0"
+description = "MT5 + Telegram trading signal bot with closed-bar strategy and resilient delivery."
+authors = ["Minea Trading Bot"]
+readme = "README.md"
+packages = [{ include = "trading_signal_bot", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+numpy = "^2.2.2"
+pandas = "^2.2.3"
+pyyaml = "^6.0.2"
+python-dotenv = "^1.0.1"
+requests = "^2.32.3"
+MetaTrader5 = { version = "^5.0.45", markers = "platform_system == 'Windows'" }
+
+[tool.poetry.group.dev.dependencies]
+black = "^25.1.0"
+mypy = "^1.15.0"
+pytest = "^8.3.4"
+pytest-cov = "^6.0.0"
+ruff = "^0.9.5"
+types-pyyaml = "^6.0.12.20241230"
+types-requests = "^2.32.0.20241016"
+pandas-stubs = "^2.2.3.250527"
+
+[tool.poetry.scripts]
+trading-signal-bot = "trading_signal_bot.main:main"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "N", "UP", "B", "A", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+pretty = true
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers --disable-warnings"
