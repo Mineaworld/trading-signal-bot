@@ -39,7 +39,10 @@ jobs:
       - name: Test
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: poetry run pytest
+        shell: pwsh
+        run: |
+          $venvPath = poetry env info --path
+          & "$venvPath\Scripts\python.exe" -m pytest
 
       - name: Build
         run: poetry build
