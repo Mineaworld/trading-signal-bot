@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 import pytest
 
 from trading_signal_bot.models import Direction, Scenario, Signal
+
+UTC = timezone.utc
 
 
 def make_ohlc_df(closes: list[float], start: str, freq: str) -> pd.DataFrame:

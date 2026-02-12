@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from trading_signal_bot.repositories.dedup_store import DedupStore
 from trading_signal_bot.utils import atomic_write_json
+
+UTC = timezone.utc
 
 
 def test_new_signal_passes(tmp_path, sample_signal) -> None:

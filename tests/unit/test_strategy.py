@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 import pytest
 
 from trading_signal_bot.models import Direction, IndicatorParams, Scenario
 from trading_signal_bot.strategy import StrategyEvaluator
+
+UTC = timezone.utc
 
 
 def _make_df(periods: int, start: str, freq: str) -> pd.DataFrame:

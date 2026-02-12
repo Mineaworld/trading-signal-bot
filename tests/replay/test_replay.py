@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -10,6 +10,8 @@ import pytest
 from trading_signal_bot.main import TradingSignalBotApp
 from trading_signal_bot.models import Direction, Scenario, Signal
 from trading_signal_bot.settings import load_yaml_config
+
+UTC = timezone.utc
 
 
 def _m15_df() -> pd.DataFrame:
