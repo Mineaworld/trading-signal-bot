@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
@@ -37,12 +37,7 @@ jobs:
         run: poetry run mypy src
 
       - name: Test
-        env:
-          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        shell: pwsh
-        run: |
-          $venvPath = poetry env info --path
-          & "$venvPath\Scripts\python.exe" -m pytest
+        run: poetry run pytest
 
       - name: Build
         run: poetry build
