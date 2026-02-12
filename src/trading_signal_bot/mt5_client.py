@@ -14,10 +14,10 @@ from trading_signal_bot.models import Timeframe
 def _load_mt5_module() -> Any | None:
     """Load the optional MT5 runtime dependency only when needed."""
     try:
-        import MetaTrader5 as mt5  # type: ignore[import-untyped]
+        import MetaTrader5  # type: ignore[import-untyped]
     except Exception:  # pragma: no cover - runtime dependency on Windows MT5
         return None
-    return mt5
+    return MetaTrader5
 
 
 @dataclass(frozen=True)
