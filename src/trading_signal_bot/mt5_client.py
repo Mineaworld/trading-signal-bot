@@ -4,7 +4,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -45,9 +45,10 @@ class MT5Client:
         self._alias_map = alias_map
         self._reconnect = reconnect
         self._logger = logging.getLogger(self.__class__.__name__)
-        self._mt5 = mt5_module if mt5_module is not None else _load_mt5_module()
-        if self._mt5 is None:
+        mt5 = mt5_module if mt5_module is not None else _load_mt5_module()
+        if mt5 is None:
             raise RuntimeError("MetaTrader5 package is unavailable in this environment.")
+        self._mt5 = cast(Any, mt5)
 
     def connect(self) -> bool:
         if self._path:
