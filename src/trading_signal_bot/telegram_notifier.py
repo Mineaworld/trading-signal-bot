@@ -243,11 +243,7 @@ class TelegramNotifier:
                 ]
             )
 
-        m1_header = (
-            "M1 Confirmation:"
-            if signal.m15_lwma_fast is not None
-            else "M1 Indicators:"
-        )
+        m1_header = "M1 Confirmation:" if signal.m15_lwma_fast is not None else "M1 Indicators:"
         lines.extend(["", m1_header])
 
         if signal.m1_stoch_k is not None and signal.m1_stoch_d is not None:

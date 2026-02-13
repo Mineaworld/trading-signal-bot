@@ -371,9 +371,7 @@ class StrategyEvaluator:
         ).any():
             return None
 
-        order = (
-            "bullish" if float(fast.iloc[idx]) > float(slow.iloc[idx]) else "bearish"
-        )
+        order = "bullish" if float(fast.iloc[idx]) > float(slow.iloc[idx]) else "bearish"
         if float(fast.iloc[idx]) == float(slow.iloc[idx]):
             order = "neutral"
 
