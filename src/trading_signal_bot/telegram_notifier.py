@@ -57,7 +57,11 @@ class TelegramNotifier:
         if ok:
             return True
 
-        self._logger.error("telegram send failed, queueing signal %s: %s", signal.id, error)
+        self._logger.error(
+            "telegram send failed, queueing signal %s: %s",
+            signal.id,
+            error,
+        )
         self._enqueue_failed(signal, error or "unknown")
         return False
 
@@ -82,7 +86,8 @@ class TelegramNotifier:
             current_retry_count = int(item.get("retry_count", 0))
             if current_retry_count >= self._max_failed_retry_count:
                 self._logger.error(
-                    "dropping failed signal after max retries=%s", self._max_failed_retry_count
+                    "dropping failed signal after max retries=%s",
+                    self._max_failed_retry_count,
                 )
                 continue
             payload = item.get("signal")
@@ -134,7 +139,10 @@ class TelegramNotifier:
             time.sleep(backoff)
         return (False, error)
 
-    def _send_message_once(self, html_message: str) -> tuple[bool, int | None, str | None]:
+    def _send_message_once(
+        self,
+        html_message: str,
+    ) -> tuple[bool, int | None, str | None]:
         url = f"https://api.telegram.org/bot{self._token}/sendMessage"
         payload = {
             "chat_id": self._chat_id,
@@ -157,9 +165,17 @@ class TelegramNotifier:
 
         if response.status_code == 429:
             retry_after = _parse_retry_after(response)
-            return (False, retry_after, f"rate_limited status=429 retry_after={retry_after}")
+            return (
+                False,
+                retry_after,
+                f"rate_limited status=429 retry_after={retry_after}",
+            )
 
-        return (False, None, f"status={response.status_code} body={response.text[:200]}")
+        return (
+            False,
+            None,
+            f"status={response.status_code} body={response.text[:200]}",
+        )
 
     def _enqueue_failed(self, signal: Signal, last_error: str) -> None:
         items = self._load_queue()

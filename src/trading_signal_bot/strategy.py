@@ -27,7 +27,11 @@ class StrategyEvaluator:
     def __init__(self, params: IndicatorParams) -> None:
         self._params = params
 
-    def m15_requires_m1(self, m15_df: pd.DataFrame, m15_close_time_utc: datetime) -> bool:
+    def m15_requires_m1(
+        self,
+        m15_df: pd.DataFrame,
+        m15_close_time_utc: datetime,
+    ) -> bool:
         context = self._build_m15_context(m15_df)
         if context is None:
             return False
@@ -107,10 +111,15 @@ class StrategyEvaluator:
             return []
 
         m15_prev_close = m15_close_time_utc - timedelta(minutes=15)
-        candidate = self._select_m1_candidate(m1_ctx.df, m15_prev_close, m15_close_time_utc)
+        candidate = self._select_m1_candidate(
+            m1_ctx.df,
+            m15_prev_close,
+            m15_close_time_utc,
+        )
         if candidate is None:
             return []
         m1_pos, m1_close_time = candidate
+        m1_close_price = float(m1_ctx.df.iloc[m1_pos]["close"])
         signals: list[Signal] = []
 
         # BUY scenarios: evaluate independently, no intra-side priority.
@@ -132,7 +141,7 @@ class StrategyEvaluator:
                         symbol=symbol,
                         direction=Direction.BUY,
                         scenario=Scenario.BUY_S1,
-                        price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
+                        price=price if price is not None else m1_close_price,
                         m15_close_time_utc=m15_close_time_utc,
                         m1_close_time_utc=m1_close_time,
                         m15_fast=m15_fast,
@@ -146,14 +155,18 @@ class StrategyEvaluator:
 
             m1_fast = float(m1_ctx.lwma_fast.iloc[m1_pos])
             m1_slow = float(m1_ctx.lwma_slow.iloc[m1_pos])
-            m1_lwma_cross_above, _ = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, m1_pos)
+            m1_lwma_cross_above, _ = _cross_at(
+                m1_ctx.lwma_fast,
+                m1_ctx.lwma_slow,
+                m1_pos,
+            )
             if not np.isnan([m1_fast, m1_slow]).any() and m1_lwma_cross_above:
                 signals.append(
                     self._make_signal(
                         symbol=symbol,
                         direction=Direction.BUY,
                         scenario=Scenario.BUY_S2,
-                        price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
+                        price=price if price is not None else m1_close_price,
                         m15_close_time_utc=m15_close_time_utc,
                         m1_close_time_utc=m1_close_time,
                         m15_fast=m15_fast,
@@ -184,7 +197,7 @@ class StrategyEvaluator:
                         symbol=symbol,
                         direction=Direction.SELL,
                         scenario=Scenario.SELL_S1,
-                        price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
+                        price=price if price is not None else m1_close_price,
                         m15_close_time_utc=m15_close_time_utc,
                         m1_close_time_utc=m1_close_time,
                         m15_fast=m15_fast,
@@ -198,14 +211,18 @@ class StrategyEvaluator:
 
             m1_fast = float(m1_ctx.lwma_fast.iloc[m1_pos])
             m1_slow = float(m1_ctx.lwma_slow.iloc[m1_pos])
-            _, m1_lwma_cross_below = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, m1_pos)
+            _, m1_lwma_cross_below = _cross_at(
+                m1_ctx.lwma_fast,
+                m1_ctx.lwma_slow,
+                m1_pos,
+            )
             if not np.isnan([m1_fast, m1_slow]).any() and m1_lwma_cross_below:
                 signals.append(
                     self._make_signal(
                         symbol=symbol,
                         direction=Direction.SELL,
                         scenario=Scenario.SELL_S2,
-                        price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
+                        price=price if price is not None else m1_close_price,
                         m15_close_time_utc=m15_close_time_utc,
                         m1_close_time_utc=m1_close_time,
                         m15_fast=m15_fast,
@@ -242,11 +259,16 @@ class StrategyEvaluator:
         if np.isnan([m1_fast, m1_slow, m1_k, m1_d]).any():
             return None
 
-        crossed_above, crossed_below = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, idx)
+        crossed_above, crossed_below = _cross_at(
+            m1_ctx.lwma_fast,
+            m1_ctx.lwma_slow,
+            idx,
+        )
 
         bar_open = pd.to_datetime(m1_ctx.df.iloc[idx]["time"], utc=True)
         bar_close = bar_open + timedelta(minutes=1)
         bar_close_dt = bar_close.to_pydatetime()
+        bar_close_price = float(m1_ctx.df.iloc[idx]["close"])
 
         if crossed_above and stoch_in_zone(m1_k, self._params.buy_zone):
             return Signal(
@@ -254,7 +276,7 @@ class StrategyEvaluator:
                 symbol=symbol,
                 direction=Direction.BUY,
                 scenario=Scenario.BUY_M1,
-                price=price if price is not None else float(m1_ctx.df.iloc[idx]["close"]),
+                price=price if price is not None else bar_close_price,
                 created_at_utc=utc_now(),
                 m1_bar_time_utc=bar_close_dt,
                 m1_lwma_fast=m1_fast,
@@ -269,7 +291,7 @@ class StrategyEvaluator:
                 symbol=symbol,
                 direction=Direction.SELL,
                 scenario=Scenario.SELL_M1,
-                price=price if price is not None else float(m1_ctx.df.iloc[idx]["close"]),
+                price=price if price is not None else bar_close_price,
                 created_at_utc=utc_now(),
                 m1_bar_time_utc=bar_close_dt,
                 m1_lwma_fast=m1_fast,
@@ -349,7 +371,9 @@ class StrategyEvaluator:
         ).any():
             return None
 
-        order = "bullish" if float(fast.iloc[idx]) > float(slow.iloc[idx]) else "bearish"
+        order = (
+            "bullish" if float(fast.iloc[idx]) > float(slow.iloc[idx]) else "bearish"
+        )
         if float(fast.iloc[idx]) == float(slow.iloc[idx]):
             order = "neutral"
 
@@ -380,7 +404,13 @@ class StrategyEvaluator:
             d_period=self._params.stoch_d,
             slowing=self._params.stoch_slowing,
         )
-        return _M1Context(df=df, lwma_fast=fast, lwma_slow=slow, stoch_k=stoch_k, stoch_d=stoch_d)
+        return _M1Context(
+            df=df,
+            lwma_fast=fast,
+            lwma_slow=slow,
+            stoch_k=stoch_k,
+            stoch_d=stoch_d,
+        )
 
     def _select_m1_candidate(
         self,
@@ -408,7 +438,11 @@ class _M1Context:
     stoch_d: pd.Series
 
 
-def _cross_at(series_a: pd.Series, series_b: pd.Series, idx: int) -> tuple[bool, bool]:
+def _cross_at(
+    series_a: pd.Series,
+    series_b: pd.Series,
+    idx: int,
+) -> tuple[bool, bool]:
     if idx < 1:
         return (False, False)
     prev_a = float(series_a.iloc[idx - 1])
