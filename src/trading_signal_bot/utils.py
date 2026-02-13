@@ -24,6 +24,13 @@ def seconds_until_next_m15_close(now: datetime | None = None) -> float:
     return 1.0 if wait <= 0 else wait
 
 
+def seconds_until_next_m1_close(now: datetime | None = None) -> float:
+    current = now or utc_now()
+    boundary = current.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    wait = (boundary - current).total_seconds()
+    return 1.0 if wait <= 0 else wait
+
+
 def setup_logging(level: str, file_path: Path, max_bytes: int, backup_count: int) -> logging.Logger:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter(

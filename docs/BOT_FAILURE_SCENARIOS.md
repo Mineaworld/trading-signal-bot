@@ -1,6 +1,6 @@
 # Bot Failure Scenarios and Risk Register
 
-Last updated: 2026-02-12
+Last updated: 2026-02-13
 
 ## Scope
 
@@ -87,13 +87,13 @@ System covered:
 | Q03 | Stochastic method mismatch | Chart not using Close/Close + LWMA smoothing | Different %K/%D values | Signal disagreement | High | Medium | Bot uses fixed formula from code/config | Align desktop stochastic method to bot method |
 | Q04 | Zone boundary sensitivity | `%K` just outside [10,20] or [80,90] | Near-miss non-signals | Opportunity miss | Medium | High | Strict inclusive zone checks | Tune zones after validation/backtest |
 | Q05 | Latest-M1-only confirmation | Earlier M1 cross in window but latest M1 bar no longer confirms | No signal despite intra-window setup | Missed setups | High | Medium | Uses last M1 close in M15 window | Add optional scanning of full window instead of last bar only |
-| Q06 | No intra-M15 polling | Bot evaluates once per M15 close | M1-only transient crosses missed | Missed M1 opportunities | Medium | High (if m1_only used) | Current design intentionally no M1 poll loop | Add dedicated 1-minute worker for M1-only |
+| Q06 | M1 polling lag under host stress | CPU/network delays cause minute-loop drift | Late M1-only evaluation and possible skipped opportunities during long lag | Missed M1 opportunities | Medium | Medium | Runs M1-only on 1-minute cadence with cursor catch-up | Add loop latency monitoring + host resource watchdog |
 | Q07 | Scenario priority masks alternatives | Multiple conditions true same bar | Only one scenario emitted | Partial context loss | Low | Medium | Priority fixed (`BUY_S1 > BUY_S2 > SELL_S1 > SELL_S2`) | Include secondary scenario metadata if needed |
 | Q08 | M15 preconditions gate M1 fetch | M15 gate false due tiny value changes | No M1 checks | Possible conservative misses | Medium | Medium | Intentional lazy design | Accept as strategy policy or relax gating |
 | Q09 | Cooldown suppresses legitimate same-direction setup | New valid setup inside 15 minutes | "signal blocked by dedup" | Missed valid entry alerts | High | Medium | Direction-level cooldown key | Tune cooldown or make scenario-aware cooldown |
 | Q10 | Idempotency suppresses re-alert for same bar | Restart/replay same setup | No duplicate (expected) | May look like missed alert if user deleted message | Low | High | Intentional | Keep as anti-spam behavior |
 | Q11 | M1-only mode noise | Enabling `m1_only.enabled=true` | More frequent low-quality alerts | Lower signal quality | High | Medium | Explicitly tagged low confidence | Keep disabled for primary decisioning |
-| Q12 | M1-only run cadence limitation | Runs every 15 min, not 1 min | Most M1 crosses never seen | False expectation of M1 coverage | High | High (if enabled) | Documented limitation | Implement separate 1-minute scheduler |
+| Q12 | M1-only overtrading/noise | 1-minute cadence increases candidate frequency | More low-confidence alerts and user fatigue | Lower decision quality | High | Medium | Signals are labeled low confidence + dedup cooldown applies | Tighten filters or keep M1-only disabled for primary ops |
 | Q13 | Price mismatch vs execution reality | Alert price from current tick or close, not actual fill | Manual trade PnL variance | Medium | High | Uses best available tick/close | Treat alerts as setup, not exact fill price |
 | Q14 | No spread/slippage/news filter | Volatile market events | More false/poor entries | Trading underperformance | High | High | Not in v1 scope | Add regime/news/volatility filters |
 | Q15 | No auto execution | User delayed response | Missed entries even if alert is good | Medium | High | Alert-only design | Use alerts for awareness; consider later automation |
@@ -176,7 +176,7 @@ System covered:
 3. `A05` Queue overflow drops oldest unsent alerts permanently.
 4. `O11` No external heartbeat means silent outages can last long.
 5. `Q05` Latest-M1-only candidate can miss valid earlier intra-window confirmations.
-6. `Q12` M1-only mode on M15 cadence misses many M1 opportunities.
+6. `Q12` M1-only cadence may increase low-confidence alert noise.
 7. `D06` No stale-feed detector for MT5 data freeze.
 8. `O01` Replay window only 3 M15 bars may be too short for longer outages.
 
