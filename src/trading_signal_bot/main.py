@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from trading_signal_bot.models import Signal
 from trading_signal_bot.mt5_client import MT5Client, ReconnectConfig
 from trading_signal_bot.repositories.dedup_store import DedupStore
 from trading_signal_bot.settings import AppConfig, SecretsConfig, load_secrets, load_yaml_config
@@ -342,7 +344,7 @@ class TradingSignalBotApp:
         symbol: str,
         m15_close_time_utc: datetime,
         price: float | None = None,
-    ) -> list:
+    ) -> list[Signal]:
         evaluate_all = getattr(self._strategy, "evaluate_all", None)
         if callable(evaluate_all):
             signals = evaluate_all(
@@ -352,7 +354,11 @@ class TradingSignalBotApp:
                 m15_close_time_utc=m15_close_time_utc,
                 price=price,
             )
-            return list(signals) if signals is not None else []
+            if isinstance(signals, list):
+                return signals
+            if isinstance(signals, Iterable):
+                return [signal for signal in signals if isinstance(signal, Signal)]
+            return []
 
         fallback_signal = self._strategy.evaluate(
             m15_df=m15_df,

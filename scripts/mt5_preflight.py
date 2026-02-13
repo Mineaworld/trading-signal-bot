@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import configparser
 import subprocess
-import sys
 from pathlib import Path
 
 from dotenv import dotenv_values
@@ -30,7 +29,7 @@ def main() -> int:
         return 1
 
     try:
-        import MetaTrader5 as mt5
+        import MetaTrader5
     except Exception as exc:  # pragma: no cover - runtime dependency
         _print_result("metatrader5_import_error", str(exc))
         return 1
@@ -42,11 +41,11 @@ def main() -> int:
         _print_result("configured_terminal_path", terminal_path or "<auto>")
 
         if terminal_path:
-            initialized = bool(mt5.initialize(path=terminal_path))
+            initialized = bool(MetaTrader5.initialize(path=terminal_path))
         else:
-            initialized = bool(mt5.initialize())
+            initialized = bool(MetaTrader5.initialize())
         _print_result("initialized", initialized)
-        _print_result("last_error", mt5.last_error())
+        _print_result("last_error", MetaTrader5.last_error())
         if not initialized:
             _print_result(
                 "hint",
@@ -56,17 +55,17 @@ def main() -> int:
             return 1
 
         login_ok = bool(
-            mt5.login(
+            MetaTrader5.login(
                 login=int(env["MT5_LOGIN"]),
                 password=env["MT5_PASSWORD"],
                 server=env["MT5_SERVER"],
             )
         )
         _print_result("login", login_ok)
-        _print_result("last_error", mt5.last_error())
+        _print_result("last_error", MetaTrader5.last_error())
 
-        terminal_info = mt5.terminal_info()
-        account_info = mt5.account_info()
+        terminal_info = MetaTrader5.terminal_info()
+        account_info = MetaTrader5.account_info()
         _print_result("terminal_info_present", terminal_info is not None)
         _print_result("account_info_present", account_info is not None)
         api_flag = _read_terminal_api_flag(terminal_info)
@@ -98,7 +97,7 @@ def main() -> int:
     finally:
         if initialized:
             try:
-                mt5.shutdown()
+                MetaTrader5.shutdown()
             except Exception:
                 pass
 
