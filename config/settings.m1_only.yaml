@@ -1,0 +1,51 @@
+symbols:
+  XAUUSD: "XAUUSD"
+  NAS100: "NDX100"
+  EURUSD: "EURUSD"
+  GBPJPY: "GBPJPY"
+
+timeframes:
+  primary: M15
+  confirmation: M1
+
+indicators:
+  lwma:
+    fast: 200
+    slow: 350
+  stochastic:
+    k: 30
+    d: 10
+    slowing: 10
+    buy_zone: [10, 20]
+    sell_zone: [80, 90]
+
+data:
+  candle_buffer: 450
+  min_valid_closed_bars: 2
+
+execution:
+  reconnect_max_retries: 5
+  reconnect_base_delay_seconds: 1
+  reconnect_max_delay_seconds: 30
+  loop_failure_sleep_seconds: 60
+
+signal_dedup:
+  cooldown_minutes: 15
+  retention_days: 14
+  state_file: data/dedup_state.json
+
+logging:
+  level: INFO
+  file: logs/bot.log
+  max_bytes: 5242880
+  backup_count: 3
+
+telegram:
+  failed_queue_file: data/failed_signals.json
+  max_queue_size: 50
+  max_retries: 3
+  max_failed_retry_count: 12
+  request_timeout_seconds: 15
+
+m1_only:
+  enabled: true

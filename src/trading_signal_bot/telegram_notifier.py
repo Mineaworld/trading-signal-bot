@@ -4,11 +4,14 @@ import logging
 import time
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
 from trading_signal_bot.models import Scenario, Signal
 from trading_signal_bot.utils import atomic_write_json, read_json, utc_now
+
+PHNOM_PENH_TZ = ZoneInfo("Asia/Phnom_Penh")
 
 
 class TelegramNotifier:
@@ -62,7 +65,7 @@ class TelegramNotifier:
         if self._dry_run:
             self._logger.info("DRY RUN startup check")
             return True
-        content = "<b>Trading Signal Bot</b>\nstartup check passed"
+        content = "Trading Signal Bot\nstartup check passed"
         ok, _ = self._send_message_with_retry(content)
         return ok
 
@@ -136,7 +139,6 @@ class TelegramNotifier:
         payload = {
             "chat_id": self._chat_id,
             "text": html_message,
-            "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
         try:
@@ -204,19 +206,20 @@ class TelegramNotifier:
         }[signal.scenario]
 
         display_time = signal.m15_bar_time_utc or signal.m1_bar_time_utc
+        local_time = display_time.astimezone(PHNOM_PENH_TZ)
         lines = [
-            f"<b>{signal.direction.value} {signal.symbol}</b>",
-            f"<b>{scenario_title}</b>",
+            f"{signal.direction.value} {signal.symbol}",
+            scenario_title,
             "",
-            f"<b>Price:</b> {signal.price:,.5f}",
-            f"<b>Time:</b> {display_time.strftime('%Y-%m-%d %H:%M UTC')}",
+            f"Price: {signal.price:,.5f}",
+            f"Time: {local_time.strftime('%Y-%m-%d %H:%M')} UTC+7",
         ]
 
         if signal.m15_lwma_fast is not None:
             lines.extend(
                 [
                     "",
-                    "<b>M15 Indicators:</b>",
+                    "M15 Indicators:",
                     f"|- LWMA 200: {signal.m15_lwma_fast:,.5f}",
                     f"|- LWMA 350: {signal.m15_lwma_slow:,.5f}",
                     f"|- Stoch %K: {signal.m15_stoch_k:,.2f}",
@@ -225,9 +228,9 @@ class TelegramNotifier:
             )
 
         m1_header = (
-            "<b>M1 Confirmation:</b>"
+            "M1 Confirmation:"
             if signal.m15_lwma_fast is not None
-            else "<b>M1 Indicators:</b>"
+            else "M1 Indicators:"
         )
         lines.extend(["", m1_header])
 
@@ -238,8 +241,6 @@ class TelegramNotifier:
             lines.append(f"|- LWMA 200: {signal.m1_lwma_fast:,.5f}")
             lines.append(f"|- LWMA 350: {signal.m1_lwma_slow:,.5f}")
 
-        lines.append("")
-        lines.append(f"#{signal.symbol} #{signal.direction.value} #{signal.scenario.value}")
         return "\n".join(lines)
 
 

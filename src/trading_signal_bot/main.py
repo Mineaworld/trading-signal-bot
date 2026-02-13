@@ -196,7 +196,7 @@ class TradingSignalBotApp:
         )
         m1_closed = _closed_bars_only(m1)
         current_price = self._mt5.get_current_price(symbol)
-        signal = self._strategy.evaluate(
+        signals = self._evaluate_signals(
             m15_df=m15_closed,
             m1_df=m1_closed,
             symbol=symbol,
@@ -205,25 +205,26 @@ class TradingSignalBotApp:
         )
         self._last_processed_m15_close[symbol] = m15_close
 
-        if signal is None:
+        if not signals:
             self._logger.info("no signal for %s at %s", symbol, m15_close)
             return
 
-        if not self._dedup.should_emit(signal):
-            self._logger.info("signal blocked by dedup: %s", signal.idempotency_key)
-            return
+        for signal in signals:
+            if not self._dedup.should_emit(signal):
+                self._logger.info("signal blocked by dedup: %s", signal.idempotency_key)
+                continue
 
-        self._dedup.record(signal)
-        sent = self._telegram.send_signal(signal)
-        if sent:
-            self._logger.info(
-                "signal sent: symbol=%s dir=%s scenario=%s",
-                signal.symbol,
-                signal.direction.value,
-                signal.scenario.value,
-            )
-        else:
-            self._logger.warning("signal queued after failed send: %s", signal.id)
+            self._dedup.record(signal)
+            sent = self._telegram.send_signal(signal)
+            if sent:
+                self._logger.info(
+                    "signal sent: symbol=%s dir=%s scenario=%s",
+                    signal.symbol,
+                    signal.direction.value,
+                    signal.scenario.value,
+                )
+            else:
+                self._logger.warning("signal queued after failed send: %s", signal.id)
 
     def _evaluate_m1_only_signal(self, symbol: str) -> None:
         """Evaluate M1-only signals on a 1-minute cycle, including missed bars."""
@@ -316,24 +317,53 @@ class TradingSignalBotApp:
                         continue
 
                     m1_slice = m1_closed[m1_closed["time"] <= row_close].reset_index(drop=True)
-                    signal = self._strategy.evaluate(
+                    signals = self._evaluate_signals(
                         m15_df=m15_slice,
                         m1_df=m1_slice,
                         symbol=symbol,
                         m15_close_time_utc=row_close,
                         price=None,
                     )
-                    if signal is None:
-                        continue
-                    if not self._dedup.should_emit(signal):
-                        continue
-                    self._dedup.record(signal)
-                    self._telegram.send_signal(signal)
+                    for signal in signals:
+                        if not self._dedup.should_emit(signal):
+                            continue
+                        self._dedup.record(signal)
+                        self._telegram.send_signal(signal)
 
                 latest_open = _as_utc(m15_closed.iloc[-1]["time"])
                 self._last_processed_m15_close[symbol] = latest_open + timedelta(minutes=15)
             except Exception:
                 self._logger.exception("startup replay failed for symbol=%s", symbol)
+
+    def _evaluate_signals(
+        self,
+        m15_df: pd.DataFrame,
+        m1_df: pd.DataFrame,
+        symbol: str,
+        m15_close_time_utc: datetime,
+        price: float | None = None,
+    ) -> list:
+        evaluate_all = getattr(self._strategy, "evaluate_all", None)
+        if callable(evaluate_all):
+            signals = evaluate_all(
+                m15_df=m15_df,
+                m1_df=m1_df,
+                symbol=symbol,
+                m15_close_time_utc=m15_close_time_utc,
+                price=price,
+            )
+            return list(signals) if signals is not None else []
+
+        fallback_signal = self._strategy.evaluate(
+            m15_df=m15_df,
+            m1_df=m1_df,
+            symbol=symbol,
+            m15_close_time_utc=m15_close_time_utc,
+            price=price,
+        )
+        if fallback_signal is None:
+            return []
+        return [fallback_signal]
 
 
 def parse_args() -> argparse.Namespace:

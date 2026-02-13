@@ -58,9 +58,28 @@ class StrategyEvaluator:
         m15_close_time_utc: datetime,
         price: float | None = None,
     ) -> Signal | None:
+        signals = self.evaluate_all(
+            m15_df=m15_df,
+            m1_df=m1_df,
+            symbol=symbol,
+            m15_close_time_utc=m15_close_time_utc,
+            price=price,
+        )
+        if not signals:
+            return None
+        return signals[0]
+
+    def evaluate_all(
+        self,
+        m15_df: pd.DataFrame,
+        m1_df: pd.DataFrame,
+        symbol: str,
+        m15_close_time_utc: datetime,
+        price: float | None = None,
+    ) -> list[Signal]:
         context = self._build_m15_context(m15_df)
         if context is None:
-            return None
+            return []
 
         idx = len(m15_df) - 1
         m15_k = float(context.stoch_k.iloc[idx])
@@ -68,7 +87,7 @@ class StrategyEvaluator:
         m15_fast = float(context.lwma_fast.iloc[idx])
         m15_slow = float(context.lwma_slow.iloc[idx])
         if np.isnan([m15_k, m15_d, m15_fast, m15_slow]).any():
-            return None
+            return []
 
         buy_pre = (
             context.order == "bullish"
@@ -81,19 +100,20 @@ class StrategyEvaluator:
             and context.stoch_cross_below
         )
         if not buy_pre and not sell_pre:
-            return None
+            return []
 
         m1_ctx = self._build_m1_context(m1_df)
         if m1_ctx is None:
-            return None
+            return []
 
         m15_prev_close = m15_close_time_utc - timedelta(minutes=15)
         candidate = self._select_m1_candidate(m1_ctx.df, m15_prev_close, m15_close_time_utc)
         if candidate is None:
-            return None
+            return []
         m1_pos, m1_close_time = candidate
+        signals: list[Signal] = []
 
-        # BUY_S1
+        # BUY scenarios: evaluate independently, no intra-side priority.
         if (
             context.order == "bullish"
             and stoch_in_zone(m15_k, self._params.buy_zone)
@@ -107,42 +127,45 @@ class StrategyEvaluator:
                 and m1_cross_above
                 and stoch_in_zone(m1_k, self._params.buy_zone)
             ):
-                return self._make_signal(
-                    symbol=symbol,
-                    direction=Direction.BUY,
-                    scenario=Scenario.BUY_S1,
-                    price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
-                    m15_close_time_utc=m15_close_time_utc,
-                    m1_close_time_utc=m1_close_time,
-                    m15_fast=m15_fast,
-                    m15_slow=m15_slow,
-                    m15_k=m15_k,
-                    m15_d=m15_d,
-                    m1_k=m1_k,
-                    m1_d=m1_d,
+                signals.append(
+                    self._make_signal(
+                        symbol=symbol,
+                        direction=Direction.BUY,
+                        scenario=Scenario.BUY_S1,
+                        price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
+                        m15_close_time_utc=m15_close_time_utc,
+                        m1_close_time_utc=m1_close_time,
+                        m15_fast=m15_fast,
+                        m15_slow=m15_slow,
+                        m15_k=m15_k,
+                        m15_d=m15_d,
+                        m1_k=m1_k,
+                        m1_d=m1_d,
+                    )
                 )
 
-            # BUY_S2
             m1_fast = float(m1_ctx.lwma_fast.iloc[m1_pos])
             m1_slow = float(m1_ctx.lwma_slow.iloc[m1_pos])
             m1_lwma_cross_above, _ = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, m1_pos)
             if not np.isnan([m1_fast, m1_slow]).any() and m1_lwma_cross_above:
-                return self._make_signal(
-                    symbol=symbol,
-                    direction=Direction.BUY,
-                    scenario=Scenario.BUY_S2,
-                    price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
-                    m15_close_time_utc=m15_close_time_utc,
-                    m1_close_time_utc=m1_close_time,
-                    m15_fast=m15_fast,
-                    m15_slow=m15_slow,
-                    m15_k=m15_k,
-                    m15_d=m15_d,
-                    m1_fast=m1_fast,
-                    m1_slow=m1_slow,
+                signals.append(
+                    self._make_signal(
+                        symbol=symbol,
+                        direction=Direction.BUY,
+                        scenario=Scenario.BUY_S2,
+                        price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
+                        m15_close_time_utc=m15_close_time_utc,
+                        m1_close_time_utc=m1_close_time,
+                        m15_fast=m15_fast,
+                        m15_slow=m15_slow,
+                        m15_k=m15_k,
+                        m15_d=m15_d,
+                        m1_fast=m1_fast,
+                        m1_slow=m1_slow,
+                    )
                 )
 
-        # SELL_S1
+        # SELL scenarios: evaluate independently, no intra-side priority.
         if (
             context.order == "bearish"
             and stoch_in_zone(m15_k, self._params.sell_zone)
@@ -156,42 +179,45 @@ class StrategyEvaluator:
                 and m1_cross_below
                 and stoch_in_zone(m1_k, self._params.sell_zone)
             ):
-                return self._make_signal(
-                    symbol=symbol,
-                    direction=Direction.SELL,
-                    scenario=Scenario.SELL_S1,
-                    price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
-                    m15_close_time_utc=m15_close_time_utc,
-                    m1_close_time_utc=m1_close_time,
-                    m15_fast=m15_fast,
-                    m15_slow=m15_slow,
-                    m15_k=m15_k,
-                    m15_d=m15_d,
-                    m1_k=m1_k,
-                    m1_d=m1_d,
+                signals.append(
+                    self._make_signal(
+                        symbol=symbol,
+                        direction=Direction.SELL,
+                        scenario=Scenario.SELL_S1,
+                        price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
+                        m15_close_time_utc=m15_close_time_utc,
+                        m1_close_time_utc=m1_close_time,
+                        m15_fast=m15_fast,
+                        m15_slow=m15_slow,
+                        m15_k=m15_k,
+                        m15_d=m15_d,
+                        m1_k=m1_k,
+                        m1_d=m1_d,
+                    )
                 )
 
-            # SELL_S2
             m1_fast = float(m1_ctx.lwma_fast.iloc[m1_pos])
             m1_slow = float(m1_ctx.lwma_slow.iloc[m1_pos])
             _, m1_lwma_cross_below = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, m1_pos)
             if not np.isnan([m1_fast, m1_slow]).any() and m1_lwma_cross_below:
-                return self._make_signal(
-                    symbol=symbol,
-                    direction=Direction.SELL,
-                    scenario=Scenario.SELL_S2,
-                    price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
-                    m15_close_time_utc=m15_close_time_utc,
-                    m1_close_time_utc=m1_close_time,
-                    m15_fast=m15_fast,
-                    m15_slow=m15_slow,
-                    m15_k=m15_k,
-                    m15_d=m15_d,
-                    m1_fast=m1_fast,
-                    m1_slow=m1_slow,
+                signals.append(
+                    self._make_signal(
+                        symbol=symbol,
+                        direction=Direction.SELL,
+                        scenario=Scenario.SELL_S2,
+                        price=price if price is not None else float(m1_ctx.df.iloc[m1_pos]["close"]),
+                        m15_close_time_utc=m15_close_time_utc,
+                        m1_close_time_utc=m1_close_time,
+                        m15_fast=m15_fast,
+                        m15_slow=m15_slow,
+                        m15_k=m15_k,
+                        m15_d=m15_d,
+                        m1_fast=m1_fast,
+                        m1_slow=m1_slow,
+                    )
                 )
 
-        return None
+        return signals
 
     def evaluate_m1_only(
         self,
