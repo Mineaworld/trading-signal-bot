@@ -75,7 +75,7 @@ class TradingSignalBotApp:
         )
 
     def startup(self) -> None:
-        preflight = self._mt5.startup_preflight()
+        preflight = self._startup_preflight()
         self._logger.info(
             "mt5 startup preflight path=%s terminal_running=%s",
             preflight["terminal_path"],
@@ -97,6 +97,17 @@ class TradingSignalBotApp:
             self._last_m15_cycle_close = max(self._last_processed_m15_close.values())
         self._telegram.retry_failed_queue()
         self._logger.info("startup completed")
+
+    def _startup_preflight(self) -> dict[str, str]:
+        preflight_fn = getattr(self._mt5, "startup_preflight", None)
+        if callable(preflight_fn):
+            result = preflight_fn()
+            if isinstance(result, dict):
+                return {
+                    "terminal_path": str(result.get("terminal_path", "<unknown>")),
+                    "terminal_running": str(result.get("terminal_running", "unknown")),
+                }
+        return {"terminal_path": "<unknown>", "terminal_running": "unknown"}
 
     def run_forever(self) -> None:
         if self._config.m1_only.enabled:
