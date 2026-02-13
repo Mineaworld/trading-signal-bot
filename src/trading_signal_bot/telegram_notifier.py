@@ -4,11 +4,14 @@ import logging
 import time
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 
 from trading_signal_bot.models import Scenario, Signal
 from trading_signal_bot.utils import atomic_write_json, read_json, utc_now
+
+PHNOM_PENH_TZ = ZoneInfo("Asia/Phnom_Penh")
 
 
 class TelegramNotifier:
@@ -54,7 +57,11 @@ class TelegramNotifier:
         if ok:
             return True
 
-        self._logger.error("telegram send failed, queueing signal %s: %s", signal.id, error)
+        self._logger.error(
+            "telegram send failed, queueing signal %s: %s",
+            signal.id,
+            error,
+        )
         self._enqueue_failed(signal, error or "unknown")
         return False
 
@@ -62,7 +69,7 @@ class TelegramNotifier:
         if self._dry_run:
             self._logger.info("DRY RUN startup check")
             return True
-        content = "<b>Trading Signal Bot</b>\nstartup check passed"
+        content = "Trading Signal Bot\nstartup check passed"
         ok, _ = self._send_message_with_retry(content)
         return ok
 
@@ -79,7 +86,8 @@ class TelegramNotifier:
             current_retry_count = int(item.get("retry_count", 0))
             if current_retry_count >= self._max_failed_retry_count:
                 self._logger.error(
-                    "dropping failed signal after max retries=%s", self._max_failed_retry_count
+                    "dropping failed signal after max retries=%s",
+                    self._max_failed_retry_count,
                 )
                 continue
             payload = item.get("signal")
@@ -131,12 +139,14 @@ class TelegramNotifier:
             time.sleep(backoff)
         return (False, error)
 
-    def _send_message_once(self, html_message: str) -> tuple[bool, int | None, str | None]:
+    def _send_message_once(
+        self,
+        html_message: str,
+    ) -> tuple[bool, int | None, str | None]:
         url = f"https://api.telegram.org/bot{self._token}/sendMessage"
         payload = {
             "chat_id": self._chat_id,
             "text": html_message,
-            "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
         try:
@@ -155,9 +165,17 @@ class TelegramNotifier:
 
         if response.status_code == 429:
             retry_after = _parse_retry_after(response)
-            return (False, retry_after, f"rate_limited status=429 retry_after={retry_after}")
+            return (
+                False,
+                retry_after,
+                f"rate_limited status=429 retry_after={retry_after}",
+            )
 
-        return (False, None, f"status={response.status_code} body={response.text[:200]}")
+        return (
+            False,
+            None,
+            f"status={response.status_code} body={response.text[:200]}",
+        )
 
     def _enqueue_failed(self, signal: Signal, last_error: str) -> None:
         items = self._load_queue()
@@ -204,19 +222,20 @@ class TelegramNotifier:
         }[signal.scenario]
 
         display_time = signal.m15_bar_time_utc or signal.m1_bar_time_utc
+        local_time = display_time.astimezone(PHNOM_PENH_TZ)
         lines = [
-            f"<b>{signal.direction.value} {signal.symbol}</b>",
-            f"<b>{scenario_title}</b>",
+            f"{signal.direction.value} {signal.symbol}",
+            scenario_title,
             "",
-            f"<b>Price:</b> {signal.price:,.5f}",
-            f"<b>Time:</b> {display_time.strftime('%Y-%m-%d %H:%M UTC')}",
+            f"Price: {signal.price:,.5f}",
+            f"Time: {local_time.strftime('%Y-%m-%d %H:%M')} UTC+7",
         ]
 
         if signal.m15_lwma_fast is not None:
             lines.extend(
                 [
                     "",
-                    "<b>M15 Indicators:</b>",
+                    "M15 Indicators:",
                     f"|- LWMA 200: {signal.m15_lwma_fast:,.5f}",
                     f"|- LWMA 350: {signal.m15_lwma_slow:,.5f}",
                     f"|- Stoch %K: {signal.m15_stoch_k:,.2f}",
@@ -224,11 +243,7 @@ class TelegramNotifier:
                 ]
             )
 
-        m1_header = (
-            "<b>M1 Confirmation:</b>"
-            if signal.m15_lwma_fast is not None
-            else "<b>M1 Indicators:</b>"
-        )
+        m1_header = "M1 Confirmation:" if signal.m15_lwma_fast is not None else "M1 Indicators:"
         lines.extend(["", m1_header])
 
         if signal.m1_stoch_k is not None and signal.m1_stoch_d is not None:
@@ -238,8 +253,6 @@ class TelegramNotifier:
             lines.append(f"|- LWMA 200: {signal.m1_lwma_fast:,.5f}")
             lines.append(f"|- LWMA 350: {signal.m1_lwma_slow:,.5f}")
 
-        lines.append("")
-        lines.append(f"#{signal.symbol} #{signal.direction.value} #{signal.scenario.value}")
         return "\n".join(lines)
 
 

@@ -8,9 +8,9 @@ if (Test-Path ".\.venv\Scripts\Activate.ps1") {
   . .\.venv\Scripts\Activate.ps1
 }
 
-$args = @("run", "trading-signal-bot")
+$args = @("-m", "poetry", "run", "trading-signal-bot")
 if ($DryRun) {
   $args += "--dry-run"
 }
 
-poetry @args
+python @args

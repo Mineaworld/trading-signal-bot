@@ -262,6 +262,6 @@ def test_m1_only_telegram_formatting(m1_only_signal: Signal) -> None:
     assert "M15 Indicators:" not in html
     assert "M1 Confirmation:" not in html
     assert "M1 Indicators:" in html
-    assert "2026-02-11 14:29 UTC" in html
+    assert "2026-02-11 21:29 UTC+7" in html
     assert "XAUUSD" in html
-    assert "#BUY_M1" in html
+    assert "#BUY_M1" not in html

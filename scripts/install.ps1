@@ -15,7 +15,7 @@ python -m pip install --upgrade pip
 python -m pip install poetry
 
 Write-Host "Installing dependencies..."
-poetry install
+python -m poetry install
 
 if (-not (Test-Path ".env")) {
   Write-Host "Creating .env from .env.example"
