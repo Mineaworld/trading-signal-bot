@@ -74,6 +74,16 @@ class DedupStore:
             self._prune_in_memory(self._state)
             self._persist(self._state)
 
+    def record_idempotency_only(self, signal: Signal) -> None:
+        now = utc_now().isoformat()
+        with self._lock:
+            self._state["idempotency_keys"][signal.idempotency_key] = {
+                "signal_id": signal.id,
+                "recorded_at": now,
+            }
+            self._prune_in_memory(self._state)
+            self._persist(self._state)
+
     def _persist(self, payload: dict[str, Any]) -> None:
         atomic_write_json(self._state_file, payload)
 

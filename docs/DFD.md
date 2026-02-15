@@ -34,7 +34,7 @@
 | Entity | Type | Direction | Data |
 |---|---|---|---|
 | MetaTrader 5 | Broker API | IN | M15/M1 OHLC candles, price ticks, symbol info |
-| Telegram | Messaging API | OUT | HTML-formatted trade alerts, startup message |
+| Telegram | Messaging API | OUT | Plain-text trade alerts, startup message |
 | Config Files | Local filesystem | IN | settings.yaml, .env credentials |
 | Local State Files | Local filesystem | IN/OUT | dedup_state.json, failed_signals.json |
 
@@ -68,7 +68,7 @@
       |
       | Approved Signal
       v
-+-------------+         HTML Alert           +-------------+
++-------------+      Plain-text Alert        +-------------+
 |             | ---------------------------> |             |
 |  6.0 Alert  |         Failed Signal        |  Telegram   |
 |  Dispatcher | -------> [retry queue] ----> |  Bot API    |
@@ -81,10 +81,10 @@
 |---|---|---|---|---|
 | 1.0 | MT5 Data Fetcher | Symbol alias, timeframe | DataFrame (OHLC, UTC) | Connects to MT5, resolves alias to broker symbol, fetches 450 bars, normalizes timestamps to UTC |
 | 2.0 | Indicator Calculator | DataFrame (OHLC) | LWMA(200), LWMA(350), Stoch(%K, %D) | Computes LWMA and Stochastic on closed bars only. Division-by-zero guard for flat markets |
-| 3.0 | Strategy Evaluator | M15 indicators, M1 indicators, symbol | Signal or None | Checks 4 scenarios in priority order. Enforces M1 time window constraint. Returns first match |
+| 3.0 | Strategy Evaluator | M15 indicators, M1 indicators, symbol | Signal list or None | Evaluates scenarios symmetrically and can emit multiple valid scenarios. Enforces M1 time window constraint |
 | 4.0 | Dedup Filter | Signal | Approved Signal or blocked | Dual-key check: idempotency + cooldown. Loads/persists state from JSON. Atomic file writes |
 | 5.0 | Market Gate | Symbol | Tradable (bool) | Checks `mt5.symbol_info().trade_mode`. Blocks evaluation for closed/non-tradable symbols |
-| 6.0 | Alert Dispatcher | Approved Signal | Telegram message sent | Formats HTML, sends via Bot API, retries 3x, queues failures to file for next-loop retry |
+| 6.0 | Alert Dispatcher | Approved Signal | Telegram message sent | Formats plain text, sends via Bot API, retries 3x, queues failures to file for next-loop retry |
 
 ---
 

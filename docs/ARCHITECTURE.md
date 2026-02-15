@@ -32,7 +32,7 @@
 
 | Layer | Components | Responsibility |
 |---|---|---|
-| **Presentation** | `telegram_notifier.py` | Format signals as HTML, deliver to Telegram, manage retry queue |
+| **Presentation** | `telegram_notifier.py` | Format signals as plain text, deliver to Telegram, manage retry queue |
 | **Application** | `main.py`, `strategy.py`, `indicators/` | Main loop orchestration, strategy evaluation, indicator math |
 | **Data** | `mt5_client.py`, `dedup_store.py`, `utils.py` | MT5 connection, candle fetching, dedup persistence, config loading |
 
@@ -42,6 +42,8 @@
 - **Fail-safe** - every external call (MT5, Telegram) has retry + fallback. Bot never crashes.
 - **Stateless evaluation** - each M15 cycle is self-contained. Only dedup state persists.
 - **Lazy fetching** - M1 data fetched only when M15 conditions pass. Minimizes API calls.
+- **Plain-text alerts** - no HTML tags and no hashtags in Telegram messages.
+- **Local-time presentation** - alert timestamp rendered in UTC+7 for operator readability.
 
 ---
 

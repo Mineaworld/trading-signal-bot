@@ -28,6 +28,7 @@ class ExecutionConfig:
     reconnect_base_delay_seconds: int
     reconnect_max_delay_seconds: int
     loop_failure_sleep_seconds: int
+    max_m15_backfill_bars: int
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,66 @@ class M1OnlyConfig:
 
 
 @dataclass(frozen=True)
+class ChainStrategyConfig:
+    enabled: bool
+    require_opposite_zone_on_lwma_cross: bool
+
+
+@dataclass(frozen=True)
+class SummarySignalConfig:
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class StrategyConfig:
+    enable_legacy_scenarios: bool
+    chain: ChainStrategyConfig
+    summary: SummarySignalConfig
+
+
+@dataclass(frozen=True)
+class SessionWindowConfig:
+    start: str
+    end: str
+
+
+@dataclass(frozen=True)
+class SessionFilterConfig:
+    enabled: bool
+    timezone: str
+    windows: tuple[SessionWindowConfig, ...]
+
+
+@dataclass(frozen=True)
+class RegimeFilterConfig:
+    enabled: bool
+    adx_period: int
+    min_adx: float
+
+
+@dataclass(frozen=True)
+class RiskContextConfig:
+    enabled: bool
+    atr_period: int
+    atr_stop_multiplier: float
+    rr_targets: tuple[float, float]
+
+
+@dataclass(frozen=True)
+class MonitoringConfig:
+    heartbeat_enabled: bool
+    heartbeat_interval_seconds: int
+    heartbeat_ping_url: str
+    heartbeat_file: Path
+
+
+@dataclass(frozen=True)
+class JournalConfig:
+    enabled: bool
+    sqlite_path: Path
+
+
+@dataclass(frozen=True)
 class AppConfig:
     symbols: dict[str, str]
     timeframe: TimeframeConfig
@@ -70,6 +131,12 @@ class AppConfig:
     logging: LoggingConfig
     telegram: TelegramConfig
     m1_only: M1OnlyConfig
+    strategy: StrategyConfig
+    session_filter: SessionFilterConfig
+    regime_filter: RegimeFilterConfig
+    risk_context: RiskContextConfig
+    monitoring: MonitoringConfig
+    journal: JournalConfig
 
 
 @dataclass(frozen=True)
@@ -102,10 +169,58 @@ def load_yaml_config(config_path: Path) -> AppConfig:
     dedup_cfg = _require_dict(raw, "signal_dedup")
     logging_cfg = _require_dict(raw, "logging")
     telegram_cfg = _require_dict(raw, "telegram")
+    session_filter_cfg = raw.get("session_filter", {})
+    regime_filter_cfg = raw.get("regime_filter", {})
+    risk_context_cfg = raw.get("risk_context", {})
+    monitoring_cfg = raw.get("monitoring", {})
+    journal_cfg = raw.get("journal", {})
+    strategy_cfg = raw.get("strategy", {})
 
     m1_only_cfg = raw.get("m1_only", {"enabled": False})
     if not isinstance(m1_only_cfg, dict):
         m1_only_cfg = {"enabled": False}
+    if not isinstance(session_filter_cfg, dict):
+        session_filter_cfg = {}
+    if not isinstance(regime_filter_cfg, dict):
+        regime_filter_cfg = {}
+    if not isinstance(risk_context_cfg, dict):
+        risk_context_cfg = {}
+    if not isinstance(monitoring_cfg, dict):
+        monitoring_cfg = {}
+    if not isinstance(journal_cfg, dict):
+        journal_cfg = {}
+    if not isinstance(strategy_cfg, dict):
+        strategy_cfg = {}
+    chain_cfg = strategy_cfg.get("chain", {})
+    if not isinstance(chain_cfg, dict):
+        chain_cfg = {}
+    summary_cfg = strategy_cfg.get("summary", {})
+    if not isinstance(summary_cfg, dict):
+        summary_cfg = {}
+
+    session_windows_raw = session_filter_cfg.get(
+        "windows",
+        [
+            {"start": "07:00", "end": "23:00"},
+        ],
+    )
+    parsed_windows: list[SessionWindowConfig] = []
+    if isinstance(session_windows_raw, list):
+        for item in session_windows_raw:
+            if not isinstance(item, dict):
+                continue
+            start = str(item.get("start", "07:00"))
+            end = str(item.get("end", "23:00"))
+            parsed_windows.append(SessionWindowConfig(start=start, end=end))
+    if not parsed_windows:
+        parsed_windows = [SessionWindowConfig(start="07:00", end="23:00")]
+
+    rr_targets_raw = risk_context_cfg.get("rr_targets", [1.0, 2.0])
+    parsed_rr_targets: tuple[float, float]
+    if isinstance(rr_targets_raw, list) and len(rr_targets_raw) >= 2:
+        parsed_rr_targets = (float(rr_targets_raw[0]), float(rr_targets_raw[1]))
+    else:
+        parsed_rr_targets = (1.0, 2.0)
 
     parsed_symbols = {str(k): str(v) for k, v in symbols.items()}
     if not parsed_symbols:
@@ -151,6 +266,11 @@ def load_yaml_config(config_path: Path) -> AppConfig:
                 "execution.loop_failure_sleep_seconds",
                 1,
             ),
+            max_m15_backfill_bars=_to_int_min(
+                execution_cfg.get("max_m15_backfill_bars", 16),
+                "execution.max_m15_backfill_bars",
+                1,
+            ),
         ),
         signal_dedup=SignalDedupConfig(
             cooldown_minutes=_to_int_min(
@@ -184,6 +304,48 @@ def load_yaml_config(config_path: Path) -> AppConfig:
         ),
         m1_only=M1OnlyConfig(
             enabled=bool(m1_only_cfg.get("enabled", False)),
+        ),
+        strategy=StrategyConfig(
+            enable_legacy_scenarios=bool(strategy_cfg.get("enable_legacy_scenarios", True)),
+            chain=ChainStrategyConfig(
+                enabled=bool(chain_cfg.get("enabled", True)),
+                require_opposite_zone_on_lwma_cross=bool(
+                    chain_cfg.get("require_opposite_zone_on_lwma_cross", True)
+                ),
+            ),
+            summary=SummarySignalConfig(
+                enabled=bool(summary_cfg.get("enabled", True)),
+            ),
+        ),
+        session_filter=SessionFilterConfig(
+            enabled=bool(session_filter_cfg.get("enabled", True)),
+            timezone=str(session_filter_cfg.get("timezone", "Asia/Phnom_Penh")),
+            windows=tuple(parsed_windows),
+        ),
+        regime_filter=RegimeFilterConfig(
+            enabled=bool(regime_filter_cfg.get("enabled", False)),
+            adx_period=_to_int_min(regime_filter_cfg.get("adx_period", 14), "regime_filter.adx_period", 1),
+            min_adx=float(regime_filter_cfg.get("min_adx", 25.0)),
+        ),
+        risk_context=RiskContextConfig(
+            enabled=bool(risk_context_cfg.get("enabled", False)),
+            atr_period=_to_int_min(risk_context_cfg.get("atr_period", 14), "risk_context.atr_period", 1),
+            atr_stop_multiplier=float(risk_context_cfg.get("atr_stop_multiplier", 1.0)),
+            rr_targets=parsed_rr_targets,
+        ),
+        monitoring=MonitoringConfig(
+            heartbeat_enabled=bool(monitoring_cfg.get("heartbeat_enabled", False)),
+            heartbeat_interval_seconds=_to_int_min(
+                monitoring_cfg.get("heartbeat_interval_seconds", 300),
+                "monitoring.heartbeat_interval_seconds",
+                1,
+            ),
+            heartbeat_ping_url=str(monitoring_cfg.get("heartbeat_ping_url", "")),
+            heartbeat_file=Path(str(monitoring_cfg.get("heartbeat_file", "data/heartbeat.json"))),
+        ),
+        journal=JournalConfig(
+            enabled=bool(journal_cfg.get("enabled", False)),
+            sqlite_path=Path(str(journal_cfg.get("sqlite_path", "data/signals.db"))),
         ),
     )
 
@@ -229,15 +391,28 @@ def _require_dict(payload: dict[str, Any], key: str) -> dict[str, Any]:
 def _to_zone_tuple(value: Any) -> tuple[int, int]:
     if not isinstance(value, list) or len(value) != 2:
         raise ValueError("stochastic zones must be two-element lists")
-    low = int(value[0])
-    high = int(value[1])
+    low = _parse_int_value(value[0], "stochastic zone lower bound")
+    high = _parse_int_value(value[1], "stochastic zone upper bound")
     if low > high:
         raise ValueError("zone lower bound cannot be greater than upper bound")
     return (low, high)
 
 
 def _to_int_min(value: Any, name: str, minimum: int) -> int:
-    parsed = int(value)
+    parsed = _parse_int_value(value, name)
     if parsed < minimum:
         raise ValueError(f"{name} must be >= {minimum}")
     return parsed
+
+
+def _parse_int_value(value: object, name: str) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ValueError(f"{name} must be an integer") from exc
+    raise ValueError(f"{name} must be an integer")

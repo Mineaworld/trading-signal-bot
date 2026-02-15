@@ -147,6 +147,40 @@ class MT5Client:
             raise RuntimeError(f"MT5 response missing required columns: {', '.join(missing)}")
         return df[expected].sort_values("time").reset_index(drop=True)
 
+    def fetch_candles_from_pos(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        start_pos: int,
+        count: int,
+    ) -> pd.DataFrame:
+        broker_symbol = self._resolve_symbol(symbol)
+        if not self.is_connected() and not self.reconnect():
+            raise RuntimeError("mt5 disconnected and reconnect failed")
+
+        if self._mt5.symbol_info(broker_symbol) is None:
+            raise RuntimeError(f"symbol unavailable in MT5: {broker_symbol}")
+        self._mt5.symbol_select(broker_symbol, True)
+
+        rates = self._mt5.copy_rates_from_pos(
+            broker_symbol,
+            self._to_mt5_timeframe(timeframe),
+            int(start_pos),
+            int(count),
+        )
+        if rates is None or len(rates) == 0:
+            raise RuntimeError(f"failed to fetch candles for {broker_symbol}: {self._last_error()}")
+
+        df = pd.DataFrame(rates)
+        if "time" not in df.columns:
+            raise RuntimeError("MT5 response missing 'time' field")
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+        expected = ["time", "open", "high", "low", "close", "tick_volume"]
+        missing = [col for col in expected if col not in df.columns]
+        if missing:
+            raise RuntimeError(f"MT5 response missing required columns: {', '.join(missing)}")
+        return df[expected].sort_values("time").reset_index(drop=True)
+
     def get_current_price(self, symbol: str) -> float | None:
         broker_symbol = self._resolve_symbol(symbol)
         tick = self._mt5.symbol_info_tick(broker_symbol)
@@ -171,18 +205,25 @@ class MT5Client:
         if info is None:
             return False
         trade_mode = getattr(info, "trade_mode", None)
-        if trade_mode is None:
+        trade_mode_int = _to_int_or_none(trade_mode)
+        if trade_mode_int is None:
             return False
-        return int(trade_mode) > 0
+        return trade_mode_int > 0
 
     def _resolve_symbol(self, alias_or_symbol: str) -> str:
         return self._alias_map.get(alias_or_symbol, alias_or_symbol)
 
     def _to_mt5_timeframe(self, timeframe: Timeframe) -> int:
         if timeframe == Timeframe.M1:
-            return int(self._mt5.TIMEFRAME_M1)
+            value = _to_int_or_none(getattr(self._mt5, "TIMEFRAME_M1", None))
+            if value is None:
+                raise RuntimeError("MT5 TIMEFRAME_M1 constant is unavailable")
+            return value
         if timeframe == Timeframe.M15:
-            return int(self._mt5.TIMEFRAME_M15)
+            value = _to_int_or_none(getattr(self._mt5, "TIMEFRAME_M15", None))
+            if value is None:
+                raise RuntimeError("MT5 TIMEFRAME_M15 constant is unavailable")
+            return value
         raise ValueError(f"unsupported timeframe: {timeframe}")
 
     def _last_error(self) -> str:
@@ -223,6 +264,20 @@ def _is_process_running(process_name: str) -> bool:
 def _extract_mt5_error_code(error: object) -> int | None:
     if isinstance(error, tuple) and error:
         code = error[0]
-        if isinstance(code, int):
-            return code
+        parsed = _to_int_or_none(code)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _to_int_or_none(value: object) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
     return None

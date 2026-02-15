@@ -1,95 +1,118 @@
 # Trading Signal Bot
 
-Python signal bot for MetaTrader 5 that evaluates a dual-timeframe LWMA + Stochastic strategy and publishes alerts to Telegram.
+Lightweight Python bot for MetaTrader 5 that watches market conditions and sends trading signals to Telegram.
 
-## Features
+## What It Does
 
-- Closed-bar strategy evaluation on M15 with M1 confirmation
-- Strict M1 time-window validation to prevent stale confirmations
-- Dual-key deduplication persisted to disk
-- Telegram retry + failed signal queue persistence
-- Startup replay for the last 3 closed M15 candles
-- `--dry-run` mode for safe validation
+- Reads live market data from MT5
+- Evaluates strategy rules on closed candles
+- Sends BUY/SELL signal alerts to Telegram
+- Supports:
+  - M15 + M1 strategy flow
+  - Optional M1-only mode
+  - Chained signal mode (M15 trigger -> M1 confirmations)
+  - Signal deduplication and retry queue
 
-## Project Layout
+## Current Status
 
-```text
-src/trading_signal_bot/
-  main.py
-  mt5_client.py
-  strategy.py
-  telegram_notifier.py
-  settings.py
-  models.py
-  ports.py
-  indicators/
-  repositories/
-tests/
-config/settings.yaml
-.env.example
-```
+- Core bot flow is implemented
+- Chained BUY/SELL strategy is implemented
+- Summary signals for multiple matches are implemented
+- Active validation focus is real-time signal behavior (missed/expected signals)
 
-## Prerequisites
+## Requirements
 
-- Windows machine (MT5 Python bridge requirement)
+- Windows machine (MT5 Python integration)
 - Python 3.10+
 - MetaTrader 5 terminal installed and logged in
-- Telegram bot token and chat id
+- Telegram bot token and target chat ID
 
 ## Setup
 
-1. Install dependencies with Poetry:
+1. Install Poetry and dependencies:
 
 ```powershell
 python -m pip install poetry
 python -m poetry install
 ```
 
-If `poetry` is not on PATH in your shell, use `python -m poetry ...` commands.
-
-2. Create local env file:
+2. Create `.env` from template:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-3. Fill `.env` with MT5 and Telegram credentials.
+3. Fill `.env` values:
+- `MT5_LOGIN`
+- `MT5_PASSWORD`
+- `MT5_SERVER`
+- `MT5_TERMINAL_PATH` (optional)
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
 
-4. Verify configuration in `config/settings.yaml`.
-
-## Deployment (AWS First)
-
-If you have AWS credits, deploy on AWS Windows VPS first instead of keeping your laptop on 24/5.
-
-- Recommended: `Amazon Lightsail (Windows)` for simpler setup.
-- Alternative: `Amazon EC2 (Windows)` for more control.
-- Full guide: `docs/AWS_VPS_SETUP.md`.
-- Milestone tracking: `docs/MILESTONES.md`.
+4. Check config:
+- `config/settings.yaml` (default)
+- `config/settings.m1_only.yaml` (M1-only enabled)
 
 ## Run
 
-Dry-run mode:
+Dry run:
 
 ```powershell
 python -m poetry run trading-signal-bot --dry-run
 ```
 
-Live mode:
+Live:
 
 ```powershell
 python -m poetry run trading-signal-bot
 ```
 
-## Test
+M1-only config:
 
 ```powershell
-python -m poetry run pytest
+python -m poetry run trading-signal-bot --config config/settings.m1_only.yaml
 ```
 
-## Lint + Type Check
+## One-Click Local Launch
+
+If included in your branch/workspace:
 
 ```powershell
-python -m poetry run ruff check .
-python -m poetry run black --check .
-python -m poetry run mypy src
+run_bot_live.bat
 ```
+
+This runs MT5 preflight checks and then starts the bot with your configured settings.
+
+## Troubleshooting
+
+- If `poetry` is not recognized, use `python -m poetry ...`
+- If MT5 initialize fails (`IPC timeout`):
+  - keep MT5 open and connected
+  - confirm `.env` login/server matches active MT5 account
+  - enable MT5 API in `Tools -> Options -> Expert Advisors`
+- If only startup message appears in Telegram:
+  - bot is running, but strategy conditions are not met yet
+
+## Project Layout
+
+```text
+src/trading_signal_bot/
+  main.py
+  strategy.py
+  mt5_client.py
+  telegram_notifier.py
+  settings.py
+  models.py
+  indicators/
+  repositories/
+config/
+tests/
+docs/
+```
+
+## Documentation
+
+- `docs/Planning.md` - implementation roadmap and branch status
+- `docs/TECHNICAL_SPEC.md` - technical behavior and config contracts
+

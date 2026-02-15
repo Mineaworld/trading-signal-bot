@@ -88,7 +88,7 @@ System covered:
 | Q04 | Zone boundary sensitivity | `%K` just outside [10,20] or [80,90] | Near-miss non-signals | Opportunity miss | Medium | High | Strict inclusive zone checks | Tune zones after validation/backtest |
 | Q05 | Latest-M1-only confirmation | Earlier M1 cross in window but latest M1 bar no longer confirms | No signal despite intra-window setup | Missed setups | High | Medium | Uses last M1 close in M15 window | Add optional scanning of full window instead of last bar only |
 | Q06 | M1 polling lag under host stress | CPU/network delays cause minute-loop drift | Late M1-only evaluation and possible skipped opportunities during long lag | Missed M1 opportunities | Medium | Medium | Runs M1-only on 1-minute cadence with cursor catch-up | Add loop latency monitoring + host resource watchdog |
-| Q07 | Scenario priority masks alternatives | Multiple conditions true same bar | Only one scenario emitted | Partial context loss | Low | Medium | Priority fixed (`BUY_S1 > BUY_S2 > SELL_S1 > SELL_S2`) | Include secondary scenario metadata if needed |
+| Q07 | Cooldown masks secondary valid scenario | Multiple same-direction scenarios true on same bar | Secondary scenario may be suppressed | Partial context loss | Medium | Medium | Strategy can emit multiple scenarios, but direction cooldown may block later one | Make cooldown scenario-aware or defer cooldown update until all same-bar scenarios are processed |
 | Q08 | M15 preconditions gate M1 fetch | M15 gate false due tiny value changes | No M1 checks | Possible conservative misses | Medium | Medium | Intentional lazy design | Accept as strategy policy or relax gating |
 | Q09 | Cooldown suppresses legitimate same-direction setup | New valid setup inside 15 minutes | "signal blocked by dedup" | Missed valid entry alerts | High | Medium | Direction-level cooldown key | Tune cooldown or make scenario-aware cooldown |
 | Q10 | Idempotency suppresses re-alert for same bar | Restart/replay same setup | No duplicate (expected) | May look like missed alert if user deleted message | Low | High | Intentional | Keep as anti-spam behavior |
@@ -99,7 +99,7 @@ System covered:
 | Q15 | No auto execution | User delayed response | Missed entries even if alert is good | Medium | High | Alert-only design | Use alerts for awareness; consider later automation |
 | Q16 | Regime shift risk | Strategy stops fitting market regime | Declining win rate | High | Medium | No adaptive logic | Add performance monitoring and periodic revalidation |
 | Q17 | Limited replay horizon | Downtime > ~45 minutes | Older missed setups unrecoverable | High | Medium | Replays only last 3 M15 bars | Increase replay depth or persistent cursor |
-| Q18 | Manual chart-time misunderstanding | User reads local time while bot reports UTC | "Wrong candle" confusion | Low | High | Alerts formatted in UTC | Educate on UTC or add local-time option |
+| Q18 | Manual chart-time misunderstanding | User reads local time while bot reports different timezone | "Wrong candle" confusion | Low | High | Alerts formatted in UTC+7 | Keep timezone labeling explicit in alert text |
 
 ---
 

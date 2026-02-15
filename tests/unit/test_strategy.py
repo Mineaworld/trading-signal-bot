@@ -243,7 +243,7 @@ def test_sell_s2_signal(monkeypatch: pytest.MonkeyPatch) -> None:
     assert signal.scenario == Scenario.SELL_S2
 
 
-def test_priority_buy_s1_over_buy_s2(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_both_buy_scenarios_match(monkeypatch: pytest.MonkeyPatch) -> None:
     m15 = _make_df(6, "2026-02-11 14:00:00", "15min")
     m1 = _make_df(40, "2026-02-11 15:00:00", "1min")
     m1_k = [50.0] * 40
@@ -272,11 +272,12 @@ def test_priority_buy_s1_over_buy_s2(monkeypatch: pytest.MonkeyPatch) -> None:
         m1_d=m1_d,
     )
     evaluator = StrategyEvaluator(_params())
-    signal = evaluator.evaluate(
+    signals = evaluator.evaluate_all(
         m15_df=m15,
         m1_df=m1,
         symbol="XAUUSD",
         m15_close_time_utc=datetime(2026, 2, 11, 15, 30, tzinfo=UTC),
     )
-    assert signal is not None
-    assert signal.scenario == Scenario.BUY_S1
+    assert len(signals) == 2
+    scenarios = {signal.scenario for signal in signals}
+    assert scenarios == {Scenario.BUY_S1, Scenario.BUY_S2}
