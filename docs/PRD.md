@@ -18,7 +18,7 @@ Minea-Trading Bot
 
 ### 1.4 Last Updated
 
-2026-02-11
+2026-02-13
 
 ### 1.5 Problem Statement
 
@@ -87,10 +87,11 @@ A Python bot that runs 24/5 during market hours, automatically monitors 4 tradin
 
 - **SHALL** evaluate strategy only on new M15 candle close
 - **SHALL** check M15 conditions first, fetch M1 only if M15 passes (lazy evaluation)
-- **SHALL** check M1 confirmation once using latest closed M1 bar (no polling loop)
+- **SHALL** check M1 confirmation using the selected M1 candidate inside the active M15 window
 - **SHALL** enforce M1 time window: `m15_prev_close < m1_bar_time <= m15_current_close`
 - **SHALL** reject stale M1 confirmations from earlier M15 periods
-- **SHALL** evaluate scenarios in priority order: BUY_S1 > BUY_S2 > SELL_S1 > SELL_S2
+- **SHALL** evaluate BUY and SELL symmetrically (no side prioritization)
+- **SHALL** emit all scenarios that pass validation on the selected M1 candidate bar
 - **SHALL** require LWMA trend filter on ALL scenarios (both S1 and S2)
 
 ### FR-04: Signal Deduplication
@@ -103,8 +104,10 @@ A Python bot that runs 24/5 during market hours, automatically monitors 4 tradin
 
 ### FR-05: Alert Delivery
 
-- **SHALL** send HTML-formatted alerts to Telegram via Bot API
+- **SHALL** send plain-text alerts to Telegram via Bot API (no HTML tags)
 - **SHALL** include: symbol, direction, scenario, price, time, M15 indicators, M1 confirmation
+- **SHALL** display alert timestamp in UTC+7
+- **SHALL NOT** include hashtags in alert body
 - **SHALL** retry failed sends up to 3 times with `RetryAfter` respect
 - **SHALL** queue failed signals to file for retry on next loop iteration
 - **SHALL** cap failed queue at 50 entries (oldest dropped)
@@ -120,6 +123,12 @@ A Python bot that runs 24/5 during market hours, automatically monitors 4 tradin
 
 - **SHALL** support `--dry-run` CLI flag
 - **SHALL** print signals to console without sending Telegram in dry-run mode
+
+### FR-08: Monitoring and Validation (Priority Scope)
+
+- **SHALL** define a heartbeat/uptime monitoring mechanism for production runtime
+- **SHALL** define a signal outcome journal model for post-signal performance tracking
+- **SHALL** define backtest gate criteria before promoting strategy changes to live alerts
 
 ---
 
@@ -233,5 +242,7 @@ A Python bot that runs 24/5 during market hours, automatically monitors 4 tradin
 
 - v2: Backtester - validate strategy on historical data using a two-step flow:
   1) time-based P&L ranking, then 2) SL/TP simulation for go/no-go
+- v2.1: Signal outcome journal and rolling KPI tracker (win rate, RR, drawdown)
+- v2.2: Session filter + market regime filter (e.g., ADX/volatility gate)
 - v3: Parameter optimization using backtest results
-- v3+: Auto-execution, health monitoring, multi-chat Telegram
+- v3+: Auto-execution, multi-chat Telegram

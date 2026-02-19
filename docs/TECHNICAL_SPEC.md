@@ -1,6 +1,16 @@
 # Technical Specification
 # Trading Signal Bot - MT5 + Telegram
 
+## 0. Implementation Status (2026-02-13)
+
+Implemented in current strategy branch:
+- Chained signal path for BUY and SELL across all configured pairs
+- M15 trigger modes: normal and high-probability
+- Pending setup invalidation on opposite M15 trigger, plus stale setup expiry
+- Summary signal aggregation (`BUY_SUMMARY` / `SELL_SUMMARY`) for multi-match cycles
+- Updated stochastic zones: buy `[0,20]`, sell `[80,100]`
+- Safe numeric parsing updates to avoid Pylance `object -> int` type errors
+
 ## 1. API Contracts
 
 ### 1.1 Internal Module APIs
@@ -100,8 +110,16 @@ class StrategyEvaluator:
                  symbol: str, m15_close_time_utc: datetime,
                  price: float | None = None
                  ) -> Signal | None
-        """Run all 4 scenarios in priority order. Return first match or None.
-        Priority: BUY_S1 > BUY_S2 > SELL_S1 > SELL_S2.
+        """Compatibility method. Calls evaluate_all(...) and returns first result or None.
+        Use evaluate_all in main orchestration for full signal emission.
+        M1 time window enforced: m15_prev_close < m1_bar_time <= m15_current_close."""
+
+    def evaluate_all(self, m15_df: pd.DataFrame, m1_df: pd.DataFrame,
+                     symbol: str, m15_close_time_utc: datetime,
+                     price: float | None = None
+                     ) -> list[Signal]
+        """Evaluate all scenarios on the selected M1 candidate bar.
+        BUY and SELL are treated symmetrically, no directional prioritization.
         M1 time window enforced: m15_prev_close < m1_bar_time <= m15_current_close."""
 
     def evaluate_m1_only(self, m1_df: pd.DataFrame,
@@ -143,7 +161,7 @@ class TelegramNotifier:
                  session: requests.Session | None = None) -> None
 
     def send_signal(self, signal: Signal) -> bool
-        """Format HTML, send via Bot API. Retry 3x.
+        """Format plain text, send via Bot API. Retry 3x.
         On RetryAfter: wait retry_after seconds.
         On final failure: queue to failed_signals.json.
         Returns True if sent successfully."""
@@ -205,26 +223,24 @@ class TelegramNotifier:
 ]
 ```
 
-### 2.3 Telegram Alert HTML Format
+### 2.3 Telegram Alert Plain-Text Format
 
-```html
-<b>BUY XAUUSD</b>
-<b>Scenario 1</b> (Stoch -> Stoch)
+```text
+BUY XAUUSD
+Scenario 1 (Stoch -> Stoch)
 
-<b>Price:</b> 2,341.50
-<b>Time:</b> 2026-02-11 14:30 UTC
+Price: 2,341.50000
+Time: 2026-02-11 21:30 UTC+7
 
-<b>M15 Indicators:</b>
-|- LWMA 200: 2,338.20
-|- LWMA 350: 2,335.10
-|- Stoch %K: 15.4
-|- Stoch %D: 12.8
+M15 Indicators:
+|- LWMA 200: 2,338.20000
+|- LWMA 350: 2,335.10000
+|- Stoch %K: 15.40
+|- Stoch %D: 12.80
 
-<b>M1 Confirmation:</b>
-|- Stoch %K: 18.2
-|- Stoch %D: 14.5
-
-#XAUUSD #BUY #S1
+M1 Confirmation:
+|- Stoch %K: 18.20
+|- Stoch %D: 14.50
 ```
 
 ---
@@ -329,10 +345,11 @@ For each symbol in symbols:
         m1_bars = mt5_client.fetch_candles(symbol, M1, count=450)
         m1_slice = m1_bars[m1_bars['time'] <= bar['time']]
 
-        signal = strategy.evaluate(m15_slice, m1_slice, symbol, bar['time'])
-        if signal and dedup_store.should_emit(signal):
-            telegram.send_signal(signal)
-            dedup_store.record(signal)
+        signals = strategy.evaluate_all(m15_slice, m1_slice, symbol, bar['time'])
+        for signal in signals:
+            if signal and dedup_store.should_emit(signal):
+                dedup_store.record(signal)
+                telegram.send_signal(signal)
 ```
 
 ---
@@ -351,8 +368,8 @@ For each symbol in symbols:
 | `indicators.stochastic.k` | int | Yes | 30 | %K period |
 | `indicators.stochastic.d` | int | Yes | 10 | %D period |
 | `indicators.stochastic.slowing` | int | Yes | 10 | Slowing period |
-| `indicators.stochastic.buy_zone` | list[int] | Yes | [10,20] | Buy zone bounds |
-| `indicators.stochastic.sell_zone` | list[int] | Yes | [80,90] | Sell zone bounds |
+| `indicators.stochastic.buy_zone` | list[int] | Yes | [0,20] | Buy zone bounds |
+| `indicators.stochastic.sell_zone` | list[int] | Yes | [80,100] | Sell zone bounds |
 | `data.candle_buffer` | int | Yes | 450 | Bars to fetch per request |
 | `data.min_valid_closed_bars` | int | Yes | 2 | Parsed config value; currently reserved (not enforced in runtime strategy flow) |
 | `execution.reconnect_max_retries` | int | Yes | 5 | MT5 reconnect attempts |
@@ -372,6 +389,17 @@ For each symbol in symbols:
 | `telegram.max_failed_retry_count` | int | Yes | 12 | Max retries from failed queue |
 | `telegram.request_timeout_seconds` | int | Yes | 15 | HTTP request timeout |
 | `m1_only.enabled` | bool | No | false | Enable M1-only signal evaluation |
+| `strategy.enable_legacy_scenarios` | bool | No | true | Keep legacy S1/S2 logic active |
+| `strategy.chain.enabled` | bool | No | true | Enable chained M15->M1 setup logic |
+| `strategy.chain.require_opposite_zone_on_lwma_cross` | bool | No | true | Require opposite stochastic zone at M1 LWMA step |
+| `strategy.summary.enabled` | bool | No | true | Emit one summary signal when multiple scenarios match |
+
+### 4.3 Known Gaps and Planned Changes
+
+- Dedup-send atomicity: current flow records dedup before confirmed delivery. Planned: record only after success or move to outbox.
+- Runtime M15 backfill: current runtime evaluates latest closed bar only. Planned: process missed intermediate bars.
+- Performance validation: backtest + signal journal are required before production confidence claims.
+- Missed-signal diagnostics: continue validating real chart events against runtime logs and tighten edge rules where needed.
 
 ### 4.2 .env Schema
 

@@ -256,12 +256,12 @@ def test_m1_only_telegram_formatting(m1_only_signal: Signal) -> None:
         failed_queue_file=Path("/tmp/test_queue.json"),
         dry_run=True,
     )
-    html = notifier._format_signal_html(m1_only_signal)
+    text = notifier._format_signal_text(m1_only_signal)
 
-    assert "M1-Only (Low Confidence)" in html
-    assert "M15 Indicators:" not in html
-    assert "M1 Confirmation:" not in html
-    assert "M1 Indicators:" in html
-    assert "2026-02-11 21:29 UTC+7" in html
-    assert "XAUUSD" in html
-    assert "#BUY_M1" not in html
+    assert "M1-Only (Low Confidence)" in text
+    assert "M15 Indicators:" not in text
+    assert "M1 Confirmation:" not in text
+    assert "M1 Indicators:" in text
+    assert "2026-02-11 21:29 UTC+7" in text
+    assert "XAUUSD" in text
+    assert "#BUY_M1" not in text

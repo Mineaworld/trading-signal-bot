@@ -3,10 +3,33 @@
 ## Summary
 A synchronous single-process Python bot that monitors XAUUSD, NAS100, EURUSD, GBPJPY on M15+M1 timeframes, applies a dual-timeframe LWMA + Stochastic strategy using only closed bars, and sends buy/sell alerts to Telegram. Optimized for production reliability: strict bar alignment, dual-key dedup, restart replay, symbol alias mapping, and hardened failure handling.
 
+## Current Branch Status (2026-02-13)
+
+Completed:
+- Added chained strategy execution for both BUY and SELL:
+  - M15 trigger detection (normal + high probability)
+  - M1 LWMA step, then M1 stochastic confirmation step
+- Added pending setup lifecycle:
+  - opposite M15 trigger invalidates opposite-direction pending setups
+  - stale pending setups auto-expire
+- Added grouped summary signal mode when multiple scenarios match for same symbol/direction
+- Expanded scenarios:
+  - `BUY_CHAIN`, `SELL_CHAIN`, `BUY_CHAIN_HP`, `SELL_CHAIN_HP`
+  - `BUY_SUMMARY`, `SELL_SUMMARY`
+- Updated stochastic zones to:
+  - buy: `[0,20]`
+  - sell: `[80,100]`
+- Fixed Pylance `ConvertibleToInt`-style issues in runtime code by adding safe int parsing helpers
+
+Next:
+- Validate real-time missed-signal reports against exact chart timestamps (pair + M15 close)
+- Add/refresh unit tests for chained setup transitions and invalidation behavior
+- After stable live validation on laptop sessions, prepare production rollout checklist
+
 ## Architecture Decisions (Locked)
 - Primary goal: reliability over speed.
 - Runtime model: synchronous single-process loop.
-- Evaluation policy: evaluate only on each new closed M15 candle. On M15 close, check M15 conditions; if pass, check M1 once using latest closed M1 bar at that moment. No M1 polling loop.
+- Evaluation policy: evaluate on each new closed M15 candle. On M15 close, check M15 conditions; if pass, check M1 using the selected M1 candidate inside the current M15 window.
 - Indicator and cross policy: use only fully closed bars (`iloc[-2]` current closed, `iloc[-3]` previous closed for cross checks).
 - M1 confirmation alignment: M1 bar must fall within triggering M15 window (`m15_prev_close < m1_bar_time <= m15_current_close`). Stale M1 from earlier M15 periods rejected.
 - All timestamps normalized to UTC immediately after MT5 fetch.
@@ -80,7 +103,7 @@ trading-signal-bot/
 - `m15_requires_m1(m15_df, m15_close_time_utc) -> bool`
 - `evaluate(m15_df, m1_df, symbol, m15_close_time_utc, price=None) -> Signal | None`
 - `evaluate_m1_only(m1_df, symbol, price=None) -> Signal | None`
-- Deterministic priority: `BUY_S1 > BUY_S2 > SELL_S1 > SELL_S2`
+- Direction-neutral scenario handling: BUY/SELL treated symmetrically; emit all scenarios that pass validation on the selected M1 candidate bar.
 - **M1 time window constraint**: `m15_prev_close < m1_bar_time <= m15_current_close`
 
 #### `repositories/dedup_store.py`
@@ -91,7 +114,7 @@ trading-signal-bot/
 - State corruption fallback: backup file + reset with warning log
 
 #### `telegram_notifier.py`
-- `send_signal(signal) -> bool` - HTML-formatted, retry max 3, respect `RetryAfter`
+- `send_signal(signal) -> bool` - plain-text format, retry max 3, respect `RetryAfter`
 - **Failed signal retry queue**: signals that fail all 3 retries queued to `data/failed_signals.json`. Retried on next loop iteration. Max 50 entries, oldest dropped.
 - `send_startup_message() -> bool` - test message on boot to validate token + chat_id
 
@@ -137,7 +160,7 @@ trading-signal-bot/
 
 ### Scheduling and Main Loop
 - **Smart sleep**: calculate seconds until next M15 candle close, sleep until then.
-- On M15 close: check M15 conditions -> if pass -> fetch M1 -> check latest closed M1 bar **once**. No M1 polling loop.
+- On M15 close: check M15 conditions -> if pass -> fetch M1 -> validate the selected M1 candidate in the active M15 window.
 - M1 candles fetched only after M15 preconditions pass (lazy evaluation).
 - Candle count default: 450 (350 LWMA + stochastic warmup + cross safety).
 - Sequential symbol processing for predictable behavior and easier recovery.
@@ -166,7 +189,7 @@ Persisted to `data/dedup_state.json`. Signal blocked if EITHER key matches:
 | Stale M1 confirmation | Rejected - M1 bar must fall within current M15 window |
 | Telegram down | 3 retries -> queue to failed_signals.json -> retry next loop |
 | Telegram rate limit | Retry with `retry_after` delay |
-| Conflicting buy/sell | First-match-wins priority order |
+| Conflicting buy/sell | Direction-neutral logic; scenarios evaluated symmetrically |
 | Bot restart / missed candles | Replay last 3 closed M15 bars (data sliced to prevent look-ahead) |
 | Broker symbol mismatch | Alias mapping in config, hard-fail if symbol not found |
 | Timezone / DST issues | All MT5 timestamps normalized to UTC immediately after fetch |
@@ -241,7 +264,7 @@ TELEGRAM_CHAT_ID=
 - **Unit tests**:
   - LWMA known values, warmup NaN behavior, cross detection on closed bars.
   - Stochastic flat-market (`raw_k=50`), Close/Close mode, boundary zones.
-  - Strategy scenario triggering, strict priority ordering, stale M1 rejection.
+  - Strategy scenario triggering, direction-neutral evaluation, stale M1 rejection.
   - Time alignment tests preventing M1 look-ahead past M15 close.
   - Dedup store: dual-key checks, atomic write/read, corruption recovery.
 - **Replay tests** (`test_replay.py`):
@@ -363,16 +386,14 @@ matplotlib>=3.7.0
 - Auto-execution via MT5 (risky, needs careful design)
 - Multi-chat Telegram support (different groups per symbol)
 - Numeric SLOs (learn real numbers from v1 runtime first)
-- Dedicated 1-minute polling loop for M1-only signals (currently tied to M15 cycle)
+- Further optimize 1-minute loop latency monitoring for M1-only signals
 
 ### M1-Only Signals (Implemented - Low-Confidence, Experimental)
 M1-only signals without M15 confirmation. Lower confidence than the dual-timeframe
 M15+M1 strategy — use for awareness only, not primary trade decisions.
 Gated by `m1_only.enabled` config (default: `false`).
 
-**Currently runs on the M15 cycle** (every 15 minutes), checking the last closed M1
-bar. A dedicated 1-minute loop would catch more crosses but requires architectural
-changes (separate thread/scheduler) — planned for future iteration.
+Runs on a dedicated 1-minute cadence, with cursor catch-up for missed M1 bars.
 
 **SELL (M1-only):**
 1. M1 LWMA200 crosses below LWMA350 (bearish LWMA cross)

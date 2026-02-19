@@ -52,7 +52,7 @@ class TelegramNotifier:
             )
             return True
 
-        message = self._format_signal_html(signal)
+        message = self._format_signal_text(signal)
         ok, error = self._send_message_with_retry(message)
         if ok:
             return True
@@ -83,7 +83,7 @@ class TelegramNotifier:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            current_retry_count = int(item.get("retry_count", 0))
+            current_retry_count = _safe_int(item.get("retry_count"), default=0)
             if current_retry_count >= self._max_failed_retry_count:
                 self._logger.error(
                     "dropping failed signal after max retries=%s",
@@ -102,12 +102,12 @@ class TelegramNotifier:
                 sent_count += 1
                 continue
 
-            ok, error = self._send_message_with_retry(self._format_signal_html(signal))
+            ok, error = self._send_message_with_retry(self._format_signal_text(signal))
             if ok:
                 sent_count += 1
                 continue
 
-            retry_count = int(item.get("retry_count", 0)) + 1
+            retry_count = _safe_int(item.get("retry_count"), default=0) + 1
             if retry_count >= self._max_failed_retry_count:
                 self._logger.error(
                     "dropping failed signal after max retries=%s",
@@ -126,10 +126,13 @@ class TelegramNotifier:
             )
         return sent_count
 
-    def _send_message_with_retry(self, html_message: str) -> tuple[bool, str | None]:
+    def queue_size(self) -> int:
+        return len(self._load_queue())
+
+    def _send_message_with_retry(self, text_message: str) -> tuple[bool, str | None]:
         error: str | None = None
         for attempt in range(1, self._max_retries + 1):
-            ok, retry_after, error = self._send_message_once(html_message)
+            ok, retry_after, error = self._send_message_once(text_message)
             if ok:
                 return (True, None)
             if retry_after is not None:
@@ -141,12 +144,12 @@ class TelegramNotifier:
 
     def _send_message_once(
         self,
-        html_message: str,
+        text_message: str,
     ) -> tuple[bool, int | None, str | None]:
         url = f"https://api.telegram.org/bot{self._token}/sendMessage"
         payload = {
             "chat_id": self._chat_id,
-            "text": html_message,
+            "text": text_message,
             "disable_web_page_preview": True,
         }
         try:
@@ -211,7 +214,7 @@ class TelegramNotifier:
     def _persist_queue(self, payload: list[dict[str, Any]]) -> None:
         atomic_write_json(self._queue_file, payload)
 
-    def _format_signal_html(self, signal: Signal) -> str:
+    def _format_signal_text(self, signal: Signal) -> str:
         scenario_title = {
             Scenario.BUY_S1: "Scenario 1 (Stoch -> Stoch)",
             Scenario.BUY_S2: "Scenario 2 (Stoch -> LWMA)",
@@ -219,6 +222,12 @@ class TelegramNotifier:
             Scenario.SELL_S2: "Scenario 2 (Stoch -> LWMA)",
             Scenario.BUY_M1: "M1-Only (Low Confidence)",
             Scenario.SELL_M1: "M1-Only (Low Confidence)",
+            Scenario.BUY_SUMMARY: "Summary (Multiple BUY Scenarios)",
+            Scenario.SELL_SUMMARY: "Summary (Multiple SELL Scenarios)",
+            Scenario.BUY_CHAIN: "BUY Chain",
+            Scenario.SELL_CHAIN: "SELL Chain",
+            Scenario.BUY_CHAIN_HP: "BUY Chain (High Probability)",
+            Scenario.SELL_CHAIN_HP: "SELL Chain (High Probability)",
         }[signal.scenario]
 
         display_time = signal.m15_bar_time_utc or signal.m1_bar_time_utc
@@ -253,6 +262,26 @@ class TelegramNotifier:
             lines.append(f"|- LWMA 200: {signal.m1_lwma_fast:,.5f}")
             lines.append(f"|- LWMA 350: {signal.m1_lwma_slow:,.5f}")
 
+        if signal.matched_scenarios:
+            values = ", ".join(item.value for item in signal.matched_scenarios)
+            lines.extend(["", f"Also valid: {values}"])
+
+        risk_stop_distance = getattr(signal, "risk_stop_distance", None)
+        risk_invalidation_price = getattr(signal, "risk_invalidation_price", None)
+        risk_tp1_price = getattr(signal, "risk_tp1_price", None)
+        risk_tp2_price = getattr(signal, "risk_tp2_price", None)
+        if risk_stop_distance is not None:
+            lines.extend(
+                [
+                    "",
+                    "Risk Context:",
+                    f"|- Stop Distance: {risk_stop_distance:,.5f}",
+                    f"|- Invalidation: {risk_invalidation_price:,.5f}",
+                    f"|- TP1: {risk_tp1_price:,.5f}",
+                    f"|- TP2: {risk_tp2_price:,.5f}",
+                ]
+            )
+
         return "\n".join(lines)
 
 
@@ -273,3 +302,16 @@ def _parse_retry_after(response: requests.Response) -> int:
     except (TypeError, ValueError):
         return fallback
     return max(1, parsed)
+
+
+def _safe_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default

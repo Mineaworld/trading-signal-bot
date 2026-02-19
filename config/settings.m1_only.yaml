@@ -16,8 +16,8 @@ indicators:
     k: 30
     d: 10
     slowing: 10
-    buy_zone: [10, 20]
-    sell_zone: [80, 90]
+    buy_zone: [0, 20]
+    sell_zone: [80, 100]
 
 data:
   candle_buffer: 450
@@ -28,6 +28,7 @@ execution:
   reconnect_base_delay_seconds: 1
   reconnect_max_delay_seconds: 30
   loop_failure_sleep_seconds: 60
+  max_m15_backfill_bars: 16
 
 signal_dedup:
   cooldown_minutes: 15
@@ -49,3 +50,39 @@ telegram:
 
 m1_only:
   enabled: true
+
+strategy:
+  enable_legacy_scenarios: true
+  chain:
+    enabled: true
+    require_opposite_zone_on_lwma_cross: true
+  summary:
+    enabled: true
+
+session_filter:
+  enabled: true
+  timezone: Asia/Phnom_Penh
+  windows:
+    - start: "07:00"
+      end: "23:00"
+
+regime_filter:
+  enabled: true
+  adx_period: 14
+  min_adx: 25.0
+
+risk_context:
+  enabled: true
+  atr_period: 14
+  atr_stop_multiplier: 1.0
+  rr_targets: [1.0, 2.0]
+
+monitoring:
+  heartbeat_enabled: true
+  heartbeat_interval_seconds: 300
+  heartbeat_ping_url: ""
+  heartbeat_file: data/heartbeat.json
+
+journal:
+  enabled: true
+  sqlite_path: data/signals.db
