@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,51 +33,19 @@ def load_historical(
         if not df.empty:
             return df
 
-    # Chunked historical pull using position offsets to avoid oversized MT5 calls.
+    # Pull a wide recent window, then trim to requested bounds.
     start_utc = _to_utc(date_range.start)
     end_utc = _to_utc(date_range.end)
     lookback_minutes = max(1, int((datetime.now(timezone.utc) - start_utc).total_seconds() // 60))
     tf_minutes = 1 if timeframe is Timeframe.M1 else 15
-    frames: list[pd.DataFrame] = []
-    start_pos = 0
-    chunk_size = 5000
-    needed_bars = (lookback_minutes // tf_minutes) + 2000
-    max_chunks = max(2, math.ceil(needed_bars / chunk_size) + 2)
-    print(
-        f"[backtest] loading {symbol} {timeframe.value} from MT5 "
-        f"(estimated chunks={max_chunks}, chunk_size={chunk_size})",
-        flush=True,
-    )
-    for idx in range(max_chunks):
-        try:
-            chunk = mt5_client.fetch_candles_from_pos(
-                symbol=symbol,
-                timeframe=timeframe,
-                start_pos=start_pos,
-                count=chunk_size,
-            )
-        except RuntimeError:
-            break
-        if chunk.empty:
-            break
-        frames.append(chunk)
-        oldest_time = pd.to_datetime(chunk["time"].min(), utc=True)
-        if idx == 0 or (idx + 1) % 10 == 0:
-            print(
-                f"[backtest] {symbol} {timeframe.value} chunk={idx + 1}/{max_chunks} "
-                f"oldest={oldest_time}",
-                flush=True,
-            )
-        if oldest_time <= start_utc:
-            break
-        if len(chunk) < chunk_size:
-            break
-        start_pos += chunk_size
-
-    if not frames:
+    needed_bars = max(450, (lookback_minutes // tf_minutes) + 2000)
+    print(f"[backtest] loading {symbol} {timeframe.value} from MT5 count={needed_bars}", flush=True)
+    try:
+        df = mt5_client.fetch_candles(symbol=symbol, timeframe=timeframe, count=needed_bars)
+    except RuntimeError:
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "tick_volume"])
 
-    df = pd.concat(frames, ignore_index=True).drop_duplicates(subset=["time"]).sort_values("time")
+    df = df.drop_duplicates(subset=["time"]).sort_values("time")
     windowed = df[(df["time"] >= start_utc) & (df["time"] <= end_utc)]
     if windowed.empty and not df.empty:
         loaded_oldest = pd.to_datetime(df["time"].min(), utc=True)

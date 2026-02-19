@@ -64,9 +64,6 @@ def main() -> None:
     print("[backtest] M1 load complete", flush=True)
     strategy = StrategyEvaluator(
         params=config.indicators,
-        require_opposite_zone_on_lwma_cross=config.strategy.chain.require_opposite_zone_on_lwma_cross,
-        regime_filter=config.regime_filter,
-        risk_context=config.risk_context,
     )
     result = run_time_based_backtest(
         strategy=strategy,
