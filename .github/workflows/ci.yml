@@ -43,11 +43,11 @@ jobs:
         run: poetry run pytest tests/integration -v
 
       - name: Validate settings.yaml
-        run: python -c "from trading_signal_bot.settings import load_yaml_config; from pathlib import Path; load_yaml_config(Path('config/settings.yaml'))"
+        run: poetry run python -c "from trading_signal_bot.settings import load_yaml_config; from pathlib import Path; load_yaml_config(Path('config/settings.yaml'))"
 
       - name: Validate .env.example keys
         run: |
-          python -c "
+          poetry run python -c "
           from pathlib import Path
           required = ['MT5_LOGIN', 'MT5_PASSWORD', 'MT5_SERVER', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID']
           env_example = Path('.env.example')
