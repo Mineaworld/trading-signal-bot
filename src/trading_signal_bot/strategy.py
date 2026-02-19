@@ -115,11 +115,14 @@ class StrategyEvaluator:
         )
         hp_buy = normal_buy and m15_lwma_cross_above
         hp_sell = normal_sell and m15_lwma_cross_below
-        if (normal_buy or normal_sell or hp_buy or hp_sell) and not self._passes_regime_filter(m15_df):
+        if (normal_buy or normal_sell or hp_buy or hp_sell) and not self._passes_regime_filter(
+            m15_df
+        ):
             return []
 
         triggers: list[M15Trigger] = []
-        if normal_buy:
+        # HP suppresses NORMAL for the same direction to avoid duplicate setups
+        if normal_buy and not hp_buy:
             triggers.append(
                 M15Trigger(
                     direction=Direction.BUY,
@@ -131,7 +134,7 @@ class StrategyEvaluator:
                     m15_stoch_d=m15_d,
                 )
             )
-        if normal_sell:
+        if normal_sell and not hp_sell:
             triggers.append(
                 M15Trigger(
                     direction=Direction.SELL,
@@ -250,7 +253,11 @@ class StrategyEvaluator:
                     continue
                 m1_cross_above, _ = _cross_at(m1_ctx.stoch_k, m1_ctx.stoch_d, pos)
                 m1_lwma_cross_above, _ = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, pos)
-                if first_s1_pos is None and m1_cross_above and stoch_in_zone(m1_k, self._params.buy_zone):
+                if (
+                    first_s1_pos is None
+                    and m1_cross_above
+                    and stoch_in_zone(m1_k, self._params.buy_zone)
+                ):
                     first_s1_pos = pos
                 if first_s2_pos is None and m1_lwma_cross_above:
                     first_s2_pos = pos
@@ -266,7 +273,6 @@ class StrategyEvaluator:
                     m15_df=m15_df,
                     direction=Direction.BUY,
                     entry_price=price if price is not None else m1_close_price,
-                    m15_fast=m15_fast,
                 )
                 signals.append(
                     self._make_signal(
@@ -295,7 +301,6 @@ class StrategyEvaluator:
                     m15_df=m15_df,
                     direction=Direction.BUY,
                     entry_price=price if price is not None else m1_close_price,
-                    m15_fast=m15_fast,
                 )
                 signals.append(
                     self._make_signal(
@@ -327,7 +332,11 @@ class StrategyEvaluator:
                     continue
                 _, m1_cross_below = _cross_at(m1_ctx.stoch_k, m1_ctx.stoch_d, pos)
                 _, m1_lwma_cross_below = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, pos)
-                if first_s1_pos is None and m1_cross_below and stoch_in_zone(m1_k, self._params.sell_zone):
+                if (
+                    first_s1_pos is None
+                    and m1_cross_below
+                    and stoch_in_zone(m1_k, self._params.sell_zone)
+                ):
                     first_s1_pos = pos
                 if first_s2_pos is None and m1_lwma_cross_below:
                     first_s2_pos = pos
@@ -343,7 +352,6 @@ class StrategyEvaluator:
                     m15_df=m15_df,
                     direction=Direction.SELL,
                     entry_price=price if price is not None else m1_close_price,
-                    m15_fast=m15_fast,
                 )
                 signals.append(
                     self._make_signal(
@@ -372,7 +380,6 @@ class StrategyEvaluator:
                     m15_df=m15_df,
                     direction=Direction.SELL,
                     entry_price=price if price is not None else m1_close_price,
-                    m15_fast=m15_fast,
                 )
                 signals.append(
                     self._make_signal(
@@ -494,16 +501,18 @@ class StrategyEvaluator:
         pending: PendingSetup,
         snapshot: M1Snapshot,
         price: float | None = None,
+        m15_df: pd.DataFrame | None = None,
     ) -> tuple[PendingSetup | None, Signal | None]:
         if pending.direction is Direction.BUY:
-            return self._advance_buy_pending(pending, snapshot, price)
-        return self._advance_sell_pending(pending, snapshot, price)
+            return self._advance_buy_pending(pending, snapshot, price, m15_df)
+        return self._advance_sell_pending(pending, snapshot, price, m15_df)
 
     def _advance_buy_pending(
         self,
         pending: PendingSetup,
         snapshot: M1Snapshot,
         price: float | None,
+        m15_df: pd.DataFrame | None = None,
     ) -> tuple[PendingSetup | None, Signal | None]:
         if pending.state is PendingState.WAIT_M1_LWMA:
             if not snapshot.lwma_cross_above:
@@ -536,6 +545,7 @@ class StrategyEvaluator:
                         pending=pending,
                         snapshot=snapshot,
                         price=price if price is not None else snapshot.close_price,
+                        m15_df=m15_df,
                     ),
                 )
 
@@ -546,6 +556,7 @@ class StrategyEvaluator:
         pending: PendingSetup,
         snapshot: M1Snapshot,
         price: float | None,
+        m15_df: pd.DataFrame | None = None,
     ) -> tuple[PendingSetup | None, Signal | None]:
         if pending.state is PendingState.WAIT_M1_LWMA:
             if not snapshot.lwma_cross_below:
@@ -578,6 +589,7 @@ class StrategyEvaluator:
                         pending=pending,
                         snapshot=snapshot,
                         price=price if price is not None else snapshot.close_price,
+                        m15_df=m15_df,
                     ),
                 )
 
@@ -588,6 +600,7 @@ class StrategyEvaluator:
         pending: PendingSetup,
         snapshot: M1Snapshot,
         price: float,
+        m15_df: pd.DataFrame | None = None,
     ) -> Signal:
         if pending.direction is Direction.BUY:
             scenario = (
@@ -601,6 +614,21 @@ class StrategyEvaluator:
                 if pending.mode is TriggerMode.HIGH_PROBABILITY
                 else Scenario.SELL_CHAIN
             )
+
+        risk = None
+        if m15_df is not None:
+            risk = self._build_risk_context(
+                m15_df=m15_df,
+                direction=pending.direction,
+                entry_price=price,
+            )
+
+        risk_stop_distance: float | None = None
+        risk_invalidation_price: float | None = None
+        risk_tp1_price: float | None = None
+        risk_tp2_price: float | None = None
+        if risk is not None:
+            risk_stop_distance, risk_invalidation_price, risk_tp1_price, risk_tp2_price = risk
 
         return Signal(
             id=Signal.new_id(),
@@ -619,6 +647,10 @@ class StrategyEvaluator:
             m1_lwma_slow=snapshot.lwma_slow,
             m1_stoch_k=snapshot.stoch_k,
             m1_stoch_d=snapshot.stoch_d,
+            risk_stop_distance=risk_stop_distance,
+            risk_invalidation_price=risk_invalidation_price,
+            risk_tp1_price=risk_tp1_price,
+            risk_tp2_price=risk_tp2_price,
         )
 
     def _make_signal(
@@ -774,8 +806,13 @@ class StrategyEvaluator:
         m15_df: pd.DataFrame,
         direction: Direction,
         entry_price: float,
-        m15_fast: float,
     ) -> tuple[float, float, float, float] | None:
+        """Build risk context with ATR-based stop, invalidation, and TP levels.
+
+        Returns (stop_distance, invalidation_price, tp1, tp2) or None.
+        Invalidation price is computed from entry_price +/- stop_distance,
+        not from the raw LWMA value.
+        """
         if self._risk_context is None or not self._risk_context.enabled:
             return None
         if len(m15_df) < self._risk_context.atr_period:
@@ -794,12 +831,14 @@ class StrategyEvaluator:
         stop_distance = atr_value * self._risk_context.atr_stop_multiplier
         rr1, rr2 = self._risk_context.rr_targets
         if direction is Direction.BUY:
+            invalidation = entry_price - stop_distance
             tp1 = entry_price + stop_distance * rr1
             tp2 = entry_price + stop_distance * rr2
         else:
+            invalidation = entry_price + stop_distance
             tp1 = entry_price - stop_distance * rr1
             tp2 = entry_price - stop_distance * rr2
-        return (stop_distance, m15_fast, tp1, tp2)
+        return (stop_distance, invalidation, tp1, tp2)
 
 
 @dataclass(frozen=True)

@@ -69,6 +69,12 @@ class FakeMT5Client:
         _ = symbol
         return 123.45
 
+    def disconnect(self):
+        pass
+
+    def is_connected(self):
+        return True
+
 
 class FakeDedupStore:
     def __init__(self, *args, **kwargs):
@@ -82,6 +88,9 @@ class FakeDedupStore:
 
     def record(self, signal):
         self.records.append(signal.id)
+
+    def flush(self):
+        pass
 
 
 class FakeNotifier:
@@ -139,6 +148,7 @@ class FakeSecrets:
     mt5_terminal_path = None
     telegram_bot_token = "t"
     telegram_chat_id = "c"
+    heartbeat_ping_url = ""
 
 
 def test_replay_slices_without_lookahead(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
@@ -204,14 +214,15 @@ def test_run_forever_isolates_symbol_errors(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(app, "_process_symbol", fake_process)
     monkeypatch.setattr("trading_signal_bot.main.seconds_until_next_m15_close", lambda: 0.0)
 
-    call_count = {"sleep": 0}
+    cycle_count = {"n": 0}
+    original_run_m15 = app._run_m15_cycle
 
-    def fake_sleep(seconds: float) -> None:
-        _ = seconds
-        call_count["sleep"] += 1
-        if call_count["sleep"] > 1:
-            raise KeyboardInterrupt
+    def counting_m15_cycle() -> None:
+        original_run_m15()
+        cycle_count["n"] += 1
+        if cycle_count["n"] >= 1:
+            app._shutdown_requested = True
 
-    monkeypatch.setattr("trading_signal_bot.main.time.sleep", fake_sleep)
+    monkeypatch.setattr(app, "_run_m15_cycle", counting_m15_cycle)
     app.run_forever()
     assert processed == ["EURUSD"]

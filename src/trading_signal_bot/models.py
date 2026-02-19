@@ -167,10 +167,14 @@ class Signal:
                 else None
             ),
             risk_tp1_price=(
-                float(payload["risk_tp1_price"]) if payload.get("risk_tp1_price") is not None else None
+                float(payload["risk_tp1_price"])
+                if payload.get("risk_tp1_price") is not None
+                else None
             ),
             risk_tp2_price=(
-                float(payload["risk_tp2_price"]) if payload.get("risk_tp2_price") is not None else None
+                float(payload["risk_tp2_price"])
+                if payload.get("risk_tp2_price") is not None
+                else None
             ),
         )
 
