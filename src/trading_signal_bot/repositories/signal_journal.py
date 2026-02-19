@@ -20,7 +20,8 @@ class SignalJournal:
 
     def _initialize(self) -> None:
         with self._connect() as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS signals (
                     signal_id TEXT PRIMARY KEY,
                     symbol TEXT NOT NULL,
@@ -37,8 +38,10 @@ class SignalJournal:
                     risk_tp2_price REAL,
                     sent_success INTEGER NOT NULL
                 )
-                """)
-            conn.execute("""
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS outcomes (
                     signal_id TEXT PRIMARY KEY,
                     status TEXT NOT NULL,
@@ -50,7 +53,8 @@ class SignalJournal:
                     updated_at_utc TEXT NOT NULL,
                     FOREIGN KEY(signal_id) REFERENCES signals(signal_id)
                 )
-                """)
+                """
+            )
             conn.commit()
 
     def record_sent_signal(self, signal: Signal, sent_success: bool) -> None:

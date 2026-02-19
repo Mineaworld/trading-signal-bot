@@ -34,22 +34,26 @@ def main() -> None:
             print(f"Avg RR: {float(avg_rr):.3f}")
 
         print("\nBy Symbol:")
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT symbol, COUNT(*) AS cnt
             FROM signals
             GROUP BY symbol
             ORDER BY cnt DESC
-            """).fetchall()
+            """
+        ).fetchall()
         for symbol, cnt in rows:
             print(f"- {symbol}: {cnt}")
 
         print("\nBy Scenario:")
-        rows = conn.execute("""
+        rows = conn.execute(
+            """
             SELECT scenario, COUNT(*) AS cnt
             FROM signals
             GROUP BY scenario
             ORDER BY cnt DESC
-            """).fetchall()
+            """
+        ).fetchall()
         for scenario, cnt in rows:
             print(f"- {scenario}: {cnt}")
 
