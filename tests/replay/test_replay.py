@@ -89,6 +89,9 @@ class FakeDedupStore:
     def record(self, signal):
         self.records.append(signal.id)
 
+    def record_idempotency_only(self, signal):
+        self.records.append(signal.id)
+
     def flush(self):
         pass
 

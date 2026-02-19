@@ -358,6 +358,12 @@ class TradingSignalBotApp:
         if snapshot is None:
             return
 
+        m15 = self._mt5.fetch_candles(
+            symbol, self._config.timeframe.primary, self._config.data.candle_buffer
+        )
+        m15_closed = _closed_bars_only(m15)
+        m15_df = None if m15_closed.empty else m15_closed
+
         current_price = self._mt5.get_current_price(symbol)
         updated_map: dict[tuple[Direction, TriggerMode], PendingSetup] = {}
         chain_signals: list[Signal] = []
@@ -374,6 +380,7 @@ class TradingSignalBotApp:
                 pending=pending,
                 snapshot=snapshot,
                 price=current_price,
+                m15_df=m15_df,
             )
             if updated_pending is not None:
                 updated_map[key] = updated_pending

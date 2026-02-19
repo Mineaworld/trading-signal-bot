@@ -590,7 +590,7 @@ def test_atr_known_values() -> None:
 
     atr = calculate_atr(high, low, close, period=3)
     # TR: [nan, 2.0, 2.0, 2.0, 2.5]
-    # SMA seed (period=3): mean([nan,2,2]) but first element TR is high-low=2
+    # SMA seed (period=3): mean([2, 2, 2]) using the first 3 TR values
     # TR[0] = 12-10=2, TR[1] = max(13-11, |13-11|, |11-11|)=2, TR[2] = max(14-12, |14-12|, |12-12|)=2
     # seed = (2+2+2)/3 = 2.0  at index 2
     # atr[3] = (2.0*2 + 2.0)/3 = 2.0
