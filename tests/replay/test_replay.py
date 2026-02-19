@@ -221,7 +221,7 @@ def test_run_forever_isolates_symbol_errors(monkeypatch: pytest.MonkeyPatch, tmp
         original_run_m15()
         cycle_count["n"] += 1
         if cycle_count["n"] >= 1:
-            app._shutdown_requested = True
+            raise KeyboardInterrupt
 
     monkeypatch.setattr(app, "_run_m15_cycle", counting_m15_cycle)
     app.run_forever()
