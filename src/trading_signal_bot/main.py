@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -436,7 +436,9 @@ class TradingSignalBotApp:
                 for _, row in replay_rows.iterrows():
                     row_open = _as_utc(row["time"])
                     row_close = row_open + timedelta(minutes=15)
-                    if self._config.session_filter.enabled and not self._is_session_active(row_close):
+                    if self._config.session_filter.enabled and not self._is_session_active(
+                        row_close
+                    ):
                         continue
 
                     m15_slice = m15_closed[m15_closed["time"] <= row["time"]].reset_index(drop=True)
@@ -505,7 +507,9 @@ class TradingSignalBotApp:
         if last_processed is None:
             return [len(m15_close_times) - 1]
         pending = [
-            idx for idx, close_time in enumerate(m15_close_times.tolist()) if _as_utc(close_time) > last_processed
+            idx
+            for idx, close_time in enumerate(m15_close_times.tolist())
+            if _as_utc(close_time) > last_processed
         ]
         if len(pending) <= self._config.execution.max_m15_backfill_bars:
             return pending
@@ -548,7 +552,9 @@ class TradingSignalBotApp:
 
             for signal in to_send:
                 if not self._dedup.should_emit(signal):
-                    self._logger.info("%s signal blocked by dedup: %s", context, signal.idempotency_key)
+                    self._logger.info(
+                        "%s signal blocked by dedup: %s", context, signal.idempotency_key
+                    )
                     continue
                 sent = self._send_with_record(signal, context=context)
                 if sent and summarized:
@@ -557,8 +563,12 @@ class TradingSignalBotApp:
 
     def _build_summary_signal(self, grouped_signals: list[Signal]) -> Signal:
         base = max(grouped_signals, key=lambda signal: signal.m1_bar_time_utc)
-        matched = sorted({signal.scenario for signal in grouped_signals}, key=lambda item: item.value)
-        scenario = Scenario.BUY_SUMMARY if base.direction is Direction.BUY else Scenario.SELL_SUMMARY
+        matched = sorted(
+            {signal.scenario for signal in grouped_signals}, key=lambda item: item.value
+        )
+        scenario = (
+            Scenario.BUY_SUMMARY if base.direction is Direction.BUY else Scenario.SELL_SUMMARY
+        )
         return Signal(
             id=Signal.new_id(),
             symbol=base.symbol,
@@ -621,15 +631,20 @@ class TradingSignalBotApp:
         except Exception:
             mt5_connected = False
 
+        last_m15_processed: dict[str, str] = {
+            k: v.isoformat() for k, v in self._last_processed_m15_close.items()
+        }
         payload = {
             "timestamp_utc": now.isoformat(),
-            "last_m15_processed": {k: v.isoformat() for k, v in self._last_processed_m15_close.items()},
+            "last_m15_processed": last_m15_processed,
             "queue_size": queue_size,
             "mt5_connected": mt5_connected,
             "m1_only_enabled": self._config.m1_only.enabled,
         }
         atomic_write_json(self._config.monitoring.heartbeat_file, payload)
-        self._logger.info("heartbeat ok queue_size=%s symbols=%s", queue_size, len(payload["last_m15_processed"]))
+        self._logger.info(
+            "heartbeat ok queue_size=%s symbols=%s", queue_size, len(last_m15_processed)
+        )
 
         ping_url = self._config.monitoring.heartbeat_ping_url.strip()
         if ping_url:
@@ -670,15 +685,15 @@ def main() -> None:
 
 def _closed_bars_only(df: pd.DataFrame) -> pd.DataFrame:
     if len(df) <= 1:
-        return df.iloc[0:0].copy()
-    return df.iloc[:-1].reset_index(drop=True)
+        return cast(pd.DataFrame, df.iloc[0:0].copy())
+    return cast(pd.DataFrame, df.iloc[:-1].reset_index(drop=True))
 
 
 def _as_utc(value: int | float | str | date | datetime | pd.Timestamp) -> datetime:
     ts = pd.Timestamp(value)
     if ts.tzinfo is None:
         return ts.to_pydatetime().replace(tzinfo=timezone.utc)
-    return ts.tz_convert(timezone.utc).to_pydatetime()
+    return cast(datetime, ts.tz_convert(timezone.utc).to_pydatetime())
 
 
 def _parse_hhmm_window(start: str, end: str) -> tuple[int, int]:
