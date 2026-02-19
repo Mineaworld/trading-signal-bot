@@ -24,18 +24,23 @@ def load_historical(
     cache_dir: Path,
 ) -> pd.DataFrame:
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_key = f"{symbol}_{timeframe.value}_{date_range.start.date()}_{date_range.end.date()}.csv"
+    start_utc = _to_utc(date_range.start)
+    end_utc = _to_utc(date_range.end)
+    cache_key = (
+        f"{symbol}_{timeframe.value}_"
+        f"{start_utc.strftime('%Y%m%dT%H%M%SZ')}_"
+        f"{end_utc.strftime('%Y%m%dT%H%M%SZ')}.csv"
+    )
     cache_file = cache_dir / cache_key
     if cache_file.exists():
         df = pd.read_csv(cache_file, parse_dates=["time"])
         if "time" in df.columns:
             df["time"] = pd.to_datetime(df["time"], utc=True)
-        if not df.empty:
-            return df
+        cached_windowed = df[(df["time"] >= start_utc) & (df["time"] <= end_utc)]
+        if not cached_windowed.empty:
+            return cached_windowed.reset_index(drop=True)
 
     # Pull a wide recent window, then trim to requested bounds.
-    start_utc = _to_utc(date_range.start)
-    end_utc = _to_utc(date_range.end)
     lookback_minutes = max(1, int((datetime.now(timezone.utc) - start_utc).total_seconds() // 60))
     tf_minutes = 1 if timeframe is Timeframe.M1 else 15
     needed_bars = max(450, (lookback_minutes // tf_minutes) + 2000)
