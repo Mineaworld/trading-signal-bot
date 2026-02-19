@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -685,15 +685,15 @@ def main() -> None:
 
 def _closed_bars_only(df: pd.DataFrame) -> pd.DataFrame:
     if len(df) <= 1:
-        return cast(pd.DataFrame, df.iloc[0:0].copy())
-    return cast(pd.DataFrame, df.iloc[:-1].reset_index(drop=True))
+        return df.iloc[0:0].copy()
+    return df.iloc[:-1].reset_index(drop=True)
 
 
 def _as_utc(value: int | float | str | date | datetime | pd.Timestamp) -> datetime:
     ts = pd.Timestamp(value)
     if ts.tzinfo is None:
         return ts.to_pydatetime().replace(tzinfo=timezone.utc)
-    return cast(datetime, ts.tz_convert(timezone.utc).to_pydatetime())
+    return ts.tz_convert(timezone.utc).to_pydatetime()
 
 
 def _parse_hhmm_window(start: str, end: str) -> tuple[int, int]:

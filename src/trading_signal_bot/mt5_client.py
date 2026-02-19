@@ -145,8 +145,7 @@ class MT5Client:
         missing = [col for col in expected if col not in df.columns]
         if missing:
             raise RuntimeError(f"MT5 response missing required columns: {', '.join(missing)}")
-        normalized = df[expected].sort_values("time").reset_index(drop=True)
-        return cast(pd.DataFrame, normalized)
+        return df[expected].sort_values("time").reset_index(drop=True)
 
     def fetch_candles_from_pos(
         self,
@@ -180,8 +179,7 @@ class MT5Client:
         missing = [col for col in expected if col not in df.columns]
         if missing:
             raise RuntimeError(f"MT5 response missing required columns: {', '.join(missing)}")
-        normalized = df[expected].sort_values("time").reset_index(drop=True)
-        return cast(pd.DataFrame, normalized)
+        return df[expected].sort_values("time").reset_index(drop=True)
 
     def get_current_price(self, symbol: str) -> float | None:
         broker_symbol = self._resolve_symbol(symbol)
