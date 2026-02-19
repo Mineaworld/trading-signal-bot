@@ -84,6 +84,11 @@ class DedupStore:
             self._prune_in_memory(self._state)
             self._persist(self._state)
 
+    def flush(self) -> None:
+        """Persist current state to disk. Safe to call during shutdown."""
+        with self._lock:
+            self._persist(self._state)
+
     def _persist(self, payload: dict[str, Any]) -> None:
         atomic_write_json(self._state_file, payload)
 

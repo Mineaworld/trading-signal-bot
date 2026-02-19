@@ -86,3 +86,8 @@ monitoring:
 journal:
   enabled: true
   sqlite_path: data/signals.db
+
+health_alerts:
+  enabled: true
+  chat_id: ""  # empty = reuse signal chat_id from .env
+  throttle_minutes: 15
