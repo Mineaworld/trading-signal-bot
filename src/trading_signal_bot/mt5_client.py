@@ -102,8 +102,29 @@ class MT5Client:
 
     def is_connected(self) -> bool:
         terminal = self._mt5.terminal_info()
+        if terminal is None:
+            return False
         account = self._mt5.account_info()
-        return terminal is not None and account is not None
+        if account is None:
+            return False
+        # Stale-connection detection: terminal responds but data calls may fail.
+        # A quick symbol probe validates the IPC channel is truly alive.
+        try:
+            test_rates = self._mt5.copy_rates_from_pos(
+                next(iter(self._alias_map.values())) if self._alias_map else "EURUSD",
+                getattr(self._mt5, "TIMEFRAME_M1", 1),
+                0,
+                1,
+            )
+            if test_rates is None:
+                self._logger.warning(
+                    "mt5 stale connection detected: terminal_info ok but data fetch returned None"
+                )
+                return False
+        except Exception:
+            self._logger.warning("mt5 stale connection probe failed")
+            return False
+        return True
 
     def reconnect(self) -> bool:
         for attempt in range(self._reconnect.max_retries):
@@ -237,13 +258,20 @@ class MT5Client:
             return
         active_login = getattr(account, "login", None)
         active_server = getattr(account, "server", None)
+        balance = getattr(account, "balance", None)
         self._logger.info(
-            "mt5 active account login=%s server=%s env_match_login=%s env_match_server=%s",
+            "mt5 active account login=%s server=%s balance=%s env_match_login=%s env_match_server=%s",
             active_login,
             active_server,
+            balance,
             str(active_login) == str(self._login),
             str(active_server) == str(self._server),
         )
+        terminal = self._mt5.terminal_info()
+        if terminal is not None:
+            build = getattr(terminal, "build", None)
+            name = getattr(terminal, "name", None)
+            self._logger.info("mt5 terminal name=%s build=%s", name, build)
 
 
 def _is_process_running(process_name: str) -> bool:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import signal as signal_module
 import time
 from collections import defaultdict
 from collections.abc import Iterable
@@ -13,6 +14,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 
+from trading_signal_bot.health_alerter import HealthAlerter
 from trading_signal_bot.models import (
     Direction,
     PendingSetup,
@@ -39,6 +41,7 @@ from trading_signal_bot.utils import (
 
 class TradingSignalBotApp:
     _PENDING_SETUP_MAX_AGE = timedelta(hours=8)
+    _MAX_CONSECUTIVE_FAILURES = 10
 
     def __init__(
         self,
@@ -52,6 +55,7 @@ class TradingSignalBotApp:
         telegram_notifier: TelegramNotifier | None = None,
     ) -> None:
         self._config = config
+        self._secrets = secrets
         self._dry_run = dry_run
         self._logger = logging.getLogger(self.__class__.__name__)
         self._last_processed_m15_close: dict[str, datetime] = {}
@@ -61,6 +65,8 @@ class TradingSignalBotApp:
             defaultdict(dict)
         )
         self._last_heartbeat_at: datetime | None = None
+        self._consecutive_failures: int = 0
+        self._shutdown_requested: bool = False
         self._session_tz = ZoneInfo(config.session_filter.timezone)
         self._session_windows: list[tuple[int, int]] = [
             _parse_hhmm_window(window.start, window.end) for window in config.session_filter.windows
@@ -108,6 +114,16 @@ class TradingSignalBotApp:
             dry_run=dry_run,
         )
 
+        health_chat_id = config.health_alerts.chat_id or secrets.telegram_chat_id
+        self._health = HealthAlerter(
+            token=secrets.telegram_bot_token,
+            chat_id=health_chat_id,
+            throttle_minutes=config.health_alerts.throttle_minutes,
+            timeout_seconds=config.telegram.request_timeout_seconds,
+            enabled=config.health_alerts.enabled,
+            dry_run=dry_run,
+        )
+
     def startup(self) -> None:
         preflight = self._startup_preflight()
         self._logger.info(
@@ -130,6 +146,7 @@ class TradingSignalBotApp:
         if self._last_processed_m15_close:
             self._last_m15_cycle_close = max(self._last_processed_m15_close.values())
         self._telegram.retry_failed_queue()
+        self._health.on_startup()
         self._logger.info("startup completed")
 
     def _startup_preflight(self) -> dict[str, str]:
@@ -144,35 +161,86 @@ class TradingSignalBotApp:
         return {"terminal_path": "<unknown>", "terminal_running": "unknown"}
 
     def run_forever(self) -> None:
+        self._install_signal_handlers()
         if self._config.m1_only.enabled or self._config.strategy.chain.enabled:
             self._run_forever_with_m1_only()
             return
 
         self._run_forever_m15_only()
 
+    def _install_signal_handlers(self) -> None:
+        """Install graceful shutdown handlers for SIGTERM/SIGINT."""
+
+        def _handle_shutdown(signum: int, frame: Any) -> None:
+            sig_name = signal_module.Signals(signum).name
+            self._logger.info("received %s, requesting graceful shutdown", sig_name)
+            self._shutdown_requested = True
+
+        signal_module.signal(signal_module.SIGTERM, _handle_shutdown)
+        signal_module.signal(signal_module.SIGINT, _handle_shutdown)
+
+    def _graceful_shutdown(self, reason: str) -> None:
+        """Flush journal, persist dedup state, log shutdown reason."""
+        self._logger.info("shutting down: %s", reason)
+        self._health.on_shutdown(reason)
+        try:
+            self._dedup.flush()
+        except Exception:
+            self._logger.exception("failed to persist dedup state during shutdown")
+        try:
+            self._mt5.disconnect()
+        except Exception:
+            self._logger.exception("failed to disconnect MT5 during shutdown")
+        self._logger.info("shutdown complete")
+
+    def _interruptible_sleep(self, seconds: float) -> None:
+        """Sleep in short intervals so shutdown can interrupt promptly."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and not self._shutdown_requested:
+            remaining = deadline - time.monotonic()
+            time.sleep(min(1.0, max(0, remaining)))
+
     def _run_forever_m15_only(self) -> None:
-        while True:
+        while not self._shutdown_requested:
             try:
                 wait_seconds = seconds_until_next_m15_close()
                 self._logger.info("sleeping %.2fs until next M15 close", wait_seconds)
-                time.sleep(wait_seconds)
+                self._interruptible_sleep(wait_seconds)
+                if self._shutdown_requested:
+                    break
 
                 self._run_m15_cycle()
                 self._telegram.retry_failed_queue()
                 self._emit_heartbeat()
+                self._consecutive_failures = 0
             except KeyboardInterrupt:
-                self._logger.info("received interrupt, shutting down")
                 break
             except Exception:
-                self._logger.exception("loop error, sleeping before retry")
+                self._consecutive_failures += 1
+                self._logger.exception(
+                    "loop error (consecutive=%d), sleeping before retry",
+                    self._consecutive_failures,
+                )
+                if self._consecutive_failures >= self._MAX_CONSECUTIVE_FAILURES:
+                    self._logger.critical(
+                        "max consecutive failures reached (%d), sending health alert",
+                        self._consecutive_failures,
+                    )
+                    self._send_health_alert(
+                        f"{self._consecutive_failures} consecutive loop failures"
+                    )
                 time.sleep(self._config.execution.loop_failure_sleep_seconds)
 
+        self._graceful_shutdown("signal received" if self._shutdown_requested else "interrupt")
+
     def _run_forever_with_m1_only(self) -> None:
-        while True:
+        while not self._shutdown_requested:
             try:
                 wait_seconds = seconds_until_next_m1_close()
                 self._logger.info("sleeping %.2fs until next M1 close", wait_seconds)
-                time.sleep(wait_seconds)
+                self._interruptible_sleep(wait_seconds)
+                if self._shutdown_requested:
+                    break
 
                 if self._should_run_m15_cycle():
                     self._run_m15_cycle()
@@ -180,12 +248,33 @@ class TradingSignalBotApp:
 
                 self._telegram.retry_failed_queue()
                 self._emit_heartbeat()
+                self._consecutive_failures = 0
             except KeyboardInterrupt:
-                self._logger.info("received interrupt, shutting down")
                 break
             except Exception:
-                self._logger.exception("loop error, sleeping before retry")
+                self._consecutive_failures += 1
+                self._logger.exception(
+                    "loop error (consecutive=%d), sleeping before retry",
+                    self._consecutive_failures,
+                )
+                if self._consecutive_failures >= self._MAX_CONSECUTIVE_FAILURES:
+                    self._logger.critical(
+                        "max consecutive failures reached (%d), sending health alert",
+                        self._consecutive_failures,
+                    )
+                    self._send_health_alert(
+                        f"{self._consecutive_failures} consecutive loop failures"
+                    )
                 time.sleep(self._config.execution.loop_failure_sleep_seconds)
+
+        self._graceful_shutdown("signal received" if self._shutdown_requested else "interrupt")
+
+    def _send_health_alert(self, message: str) -> None:
+        """Send a health alert via the health alerter. Best-effort, never raises."""
+        try:
+            self._health.alert("consecutive_failures", message)
+        except Exception:
+            self._logger.exception("failed to send health alert")
 
     def _run_m15_cycle(self) -> None:
         for symbol in self._config.symbols:
@@ -358,11 +447,27 @@ class TradingSignalBotApp:
         if snapshot is None:
             return
 
-        m15 = self._mt5.fetch_candles(
-            symbol, self._config.timeframe.primary, self._config.data.candle_buffer
-        )
-        m15_closed = _closed_bars_only(m15)
-        m15_df = None if m15_closed.empty else m15_closed
+        # Session filter: block chain signals outside session window
+        if self._config.session_filter.enabled and not self._is_session_active(
+            snapshot.bar_time_utc
+        ):
+            return
+
+        # Fetch M15 data for risk context in chain signals
+        m15_df: pd.DataFrame | None = None
+        if self._config.risk_context.enabled:
+            try:
+                m15 = self._mt5.fetch_candles(
+                    symbol, self._config.timeframe.primary, self._config.data.candle_buffer
+                )
+                m15_df = _closed_bars_only(m15)
+                if m15_df.empty:
+                    m15_df = None
+            except Exception:
+                self._logger.warning(
+                    "failed to fetch M15 for chain risk context, symbol=%s", symbol
+                )
+                m15_df = None
 
         current_price = self._mt5.get_current_price(symbol)
         updated_map: dict[tuple[Direction, TriggerMode], PendingSetup] = {}
@@ -653,7 +758,9 @@ class TradingSignalBotApp:
             "heartbeat ok queue_size=%s symbols=%s", queue_size, len(last_m15_processed)
         )
 
-        ping_url = self._config.monitoring.heartbeat_ping_url.strip()
+        ping_url = (
+            self._secrets.heartbeat_ping_url or self._config.monitoring.heartbeat_ping_url
+        ).strip()
         if ping_url:
             try:
                 self._http_session.post(ping_url, json=payload, timeout=10)

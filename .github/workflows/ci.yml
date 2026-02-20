@@ -36,8 +36,30 @@ jobs:
       - name: Type check
         run: poetry run mypy src
 
-      - name: Test
-        run: poetry run pytest
+      - name: Unit tests
+        run: poetry run pytest tests/unit -v
+
+      - name: Integration tests
+        run: poetry run pytest tests/integration -v
+
+      - name: Validate settings.yaml
+        run: poetry run python -c "from trading_signal_bot.settings import load_yaml_config; from pathlib import Path; load_yaml_config(Path('config/settings.yaml'))"
+
+      - name: Validate .env.example keys
+        run: |
+          poetry run python -c "
+          from pathlib import Path
+          required = ['MT5_LOGIN', 'MT5_PASSWORD', 'MT5_SERVER', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID']
+          env_example = Path('.env.example')
+          if env_example.exists():
+              content = env_example.read_text()
+              missing = [k for k in required if k not in content]
+              if missing:
+                  raise ValueError(f'Missing keys in .env.example: {missing}')
+              print('All required keys present in .env.example')
+          else:
+              print('WARN: .env.example not found, skipping')
+          "
 
       - name: Build
         run: poetry build
