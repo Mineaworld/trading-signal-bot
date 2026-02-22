@@ -44,7 +44,9 @@ function Main {
     poetry install --no-interaction
     if ($LASTEXITCODE -ne 0) {
       Log "ERROR: poetry install failed, rolling back"
-      git checkout $prevCommit
+      git reset --hard $prevCommit
+      poetry install --no-interaction
+      nssm restart $ServiceName
       exit 1
     }
 
@@ -53,8 +55,9 @@ function Main {
     poetry run pytest -q
     if ($LASTEXITCODE -ne 0) {
       Log "ERROR: tests failed, rolling back to $prevCommit"
-      git checkout $prevCommit
+      git reset --hard $prevCommit
       poetry install --no-interaction
+      nssm restart $ServiceName
       exit 1
     }
     Log "tests passed"
@@ -74,9 +77,16 @@ function Main {
     } else {
       Log "ERROR: service not running after restart, status=$status"
       Log "rolling back to $prevCommit"
-      git checkout $prevCommit
+      git reset --hard $prevCommit
       poetry install --no-interaction
       nssm restart $ServiceName
+      Start-Sleep -Seconds 3
+      $rollbackStatus = nssm status $ServiceName
+      if ($rollbackStatus -match "SERVICE_RUNNING") {
+        Log "rollback service running"
+      } else {
+        Log "CRITICAL: rollback service not running, status=$rollbackStatus"
+      }
       exit 1
     }
 

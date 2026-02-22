@@ -92,6 +92,16 @@ Check "Dependencies installed" {
   $LASTEXITCODE -eq 0
 }
 
+Check "NSSM installed" {
+  $v = nssm version 2>&1
+  $LASTEXITCODE -eq 0
+}
+
+Check "NSSM service registered" {
+  $status = nssm status TradingSignalBot 2>&1
+  $LASTEXITCODE -eq 0
+}
+
 Write-Host ""
 Write-Host "=== Results: $passed passed, $failed failed ===" -ForegroundColor $(if ($failed -eq 0) { "Green" } else { "Red" })
 

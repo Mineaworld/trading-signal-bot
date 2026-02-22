@@ -61,6 +61,8 @@ class TradingSignalBotApp:
         self._last_processed_m15_close: dict[str, datetime] = {}
         self._last_processed_m1_close: dict[str, datetime] = {}
         self._last_m15_cycle_close: datetime | None = None
+        # NOTE: pending setups are in-memory only and lost on restart.
+        # Full persistence is V2 scope.
         self._pending_setups: dict[str, dict[tuple[Direction, TriggerMode], PendingSetup]] = (
             defaultdict(dict)
         )
@@ -191,6 +193,11 @@ class TradingSignalBotApp:
             self._mt5.disconnect()
         except Exception:
             self._logger.exception("failed to disconnect MT5 during shutdown")
+        if self._journal is not None:
+            try:
+                self._journal.close()
+            except Exception:
+                self._logger.exception("failed to close signal journal during shutdown")
         self._logger.info("shutdown complete")
 
     def _interruptible_sleep(self, seconds: float) -> None:
@@ -229,7 +236,7 @@ class TradingSignalBotApp:
                     self._send_health_alert(
                         f"{self._consecutive_failures} consecutive loop failures"
                     )
-                time.sleep(self._config.execution.loop_failure_sleep_seconds)
+                self._interruptible_sleep(self._config.execution.loop_failure_sleep_seconds)
 
         self._graceful_shutdown("signal received" if self._shutdown_requested else "interrupt")
 
@@ -265,7 +272,7 @@ class TradingSignalBotApp:
                     self._send_health_alert(
                         f"{self._consecutive_failures} consecutive loop failures"
                     )
-                time.sleep(self._config.execution.loop_failure_sleep_seconds)
+                self._interruptible_sleep(self._config.execution.loop_failure_sleep_seconds)
 
         self._graceful_shutdown("signal received" if self._shutdown_requested else "interrupt")
 

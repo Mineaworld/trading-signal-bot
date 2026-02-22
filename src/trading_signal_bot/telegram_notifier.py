@@ -270,7 +270,10 @@ class TelegramNotifier:
         risk_invalidation_price = getattr(signal, "risk_invalidation_price", None)
         risk_tp1_price = getattr(signal, "risk_tp1_price", None)
         risk_tp2_price = getattr(signal, "risk_tp2_price", None)
-        if risk_stop_distance is not None:
+        if all(
+            v is not None
+            for v in (risk_stop_distance, risk_invalidation_price, risk_tp1_price, risk_tp2_price)
+        ):
             lines.extend(
                 [
                     "",
