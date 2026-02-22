@@ -45,6 +45,7 @@ function Main {
     if ($LASTEXITCODE -ne 0) {
       Log "ERROR: poetry install failed, rolling back"
       git reset --hard $prevCommit
+      poetry install --no-interaction
       nssm restart $ServiceName
       exit 1
     }
