@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from trading_signal_bot.models import Signal
 from trading_signal_bot.utils import atomic_write_json, read_json, utc_now
+
+
+def _parse_ts(value: str) -> datetime:
+    """Parse an ISO timestamp, normalizing naive datetimes to UTC."""
+    ts = datetime.fromisoformat(value)
+    if ts.tzinfo is None:
+        return ts.replace(tzinfo=timezone.utc)
+    return ts
 
 
 class DedupStore:
@@ -25,7 +33,7 @@ class DedupStore:
             "cooldown_keys": {},
         }
         if not self._state_file.exists():
-            self._persist(default)
+            self._safe_persist(default)
             return default
 
         try:
@@ -38,13 +46,13 @@ class DedupStore:
                 raise ValueError("state json missing required key maps")
             state = {"idempotency_keys": idempotency, "cooldown_keys": cooldown}
             self._prune_in_memory(state)
-            self._persist(state)
+            self._safe_persist(state)
             return state
         except Exception as exc:
             backup = self._state_file.with_suffix(self._state_file.suffix + ".corrupt")
             self._state_file.replace(backup)
             self._logger.warning("dedup state corrupt, backed up to %s: %s", backup, exc)
-            self._persist(default)
+            self._safe_persist(default)
             return default
 
     def should_emit(self, signal: Signal) -> bool:
@@ -58,7 +66,7 @@ class DedupStore:
             if isinstance(cooldown_entry, dict):
                 last_emitted = cooldown_entry.get("last_emitted")
                 if isinstance(last_emitted, str):
-                    ts = datetime.fromisoformat(last_emitted)
+                    ts = _parse_ts(last_emitted)
                     if (now - ts) < timedelta(minutes=self._cooldown_minutes):
                         return False
             return True
@@ -72,7 +80,7 @@ class DedupStore:
             }
             self._state["cooldown_keys"][signal.cooldown_key] = {"last_emitted": now}
             self._prune_in_memory(self._state)
-            self._persist(self._state)
+            self._safe_persist(self._state)
 
     def record_idempotency_only(self, signal: Signal) -> None:
         now = utc_now().isoformat()
@@ -82,15 +90,21 @@ class DedupStore:
                 "recorded_at": now,
             }
             self._prune_in_memory(self._state)
-            self._persist(self._state)
+            self._safe_persist(self._state)
 
     def flush(self) -> None:
         """Persist current state to disk. Safe to call during shutdown."""
         with self._lock:
-            self._persist(self._state)
+            self._safe_persist(self._state)
 
-    def _persist(self, payload: dict[str, Any]) -> None:
-        atomic_write_json(self._state_file, payload)
+    def _safe_persist(self, payload: dict[str, Any]) -> None:
+        """Persist state to disk, logging errors instead of raising."""
+        try:
+            atomic_write_json(self._state_file, payload)
+        except OSError:
+            self._logger.warning(
+                "failed to persist dedup state to %s", self._state_file, exc_info=True
+            )
 
     def _prune_in_memory(self, state: dict[str, Any], now: datetime | None = None) -> None:
         current = now or utc_now()
@@ -107,7 +121,7 @@ class DedupStore:
                     expired_keys.append(key)
                     continue
                 try:
-                    ts = datetime.fromisoformat(recorded_at)
+                    ts = _parse_ts(recorded_at)
                 except ValueError:
                     expired_keys.append(key)
                     continue
@@ -128,7 +142,7 @@ class DedupStore:
                     remove.append(key)
                     continue
                 try:
-                    ts = datetime.fromisoformat(last_emitted)
+                    ts = _parse_ts(last_emitted)
                 except ValueError:
                     remove.append(key)
                     continue

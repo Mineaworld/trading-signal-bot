@@ -63,6 +63,8 @@ def atomic_write_json(path: Path, payload: object) -> None:
     temp_path = path.with_suffix(path.suffix + ".tmp")
     with temp_path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=True, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
     os.replace(temp_path, path)
 
 

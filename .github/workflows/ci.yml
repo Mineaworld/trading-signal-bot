@@ -36,11 +36,8 @@ jobs:
       - name: Type check
         run: poetry run mypy src
 
-      - name: Unit tests
-        run: poetry run pytest tests/unit -v
-
-      - name: Integration tests
-        run: poetry run pytest tests/integration -v
+      - name: Tests
+        run: poetry run pytest tests/ -v
 
       - name: Validate settings.yaml
         run: poetry run python -c "from trading_signal_bot.settings import load_yaml_config; from pathlib import Path; load_yaml_config(Path('config/settings.yaml'))"
@@ -67,7 +64,6 @@ jobs:
   windows-smoke:
     name: windows-smoke
     runs-on: windows-latest
-    continue-on-error: true
     timeout-minutes: 15
     steps:
       - name: Checkout

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from dotenv import load_dotenv
@@ -375,6 +377,10 @@ def load_yaml_config(config_path: Path) -> AppConfig:
         ),
     )
 
+    # Resolve relative file paths against project root (config dir parent)
+    project_root = config_path.parent.parent
+    config = _resolve_paths(config, project_root)
+
     _validate_config(config)
     return config
 
@@ -414,6 +420,32 @@ def _validate_config(config: AppConfig) -> None:
             f"stoch_slowing={config.indicators.stoch_slowing})"
         )
 
+    # Validate log level
+    valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+    if config.logging.level.upper() not in valid_levels:
+        raise ValueError(
+            f"logging.level must be one of {sorted(valid_levels)}, got: {config.logging.level!r}"
+        )
+
+    # Validate timezone if session filter is enabled
+    if config.session_filter.enabled:
+        try:
+            ZoneInfo(config.session_filter.timezone)
+        except (ZoneInfoNotFoundError, KeyError) as exc:
+            raise ValueError(
+                f"session_filter.timezone is invalid: {config.session_filter.timezone!r}"
+            ) from exc
+
+    # Validate session window time formats
+    _hhmm_re = re.compile(r"^\d{2}:\d{2}$")
+    for window in config.session_filter.windows:
+        for label, value in [("start", window.start), ("end", window.end)]:
+            if not _hhmm_re.match(value):
+                raise ValueError(f"session_filter.windows.{label} must be HH:MM, got: {value!r}")
+            hour, minute = int(value[:2]), int(value[3:])
+            if hour > 23 or minute > 59:
+                raise ValueError(f"session_filter.windows.{label} out of range: {value!r}")
+
     # atr_stop_multiplier sanity check (warning only)
     if config.risk_context.enabled:
         mult = config.risk_context.atr_stop_multiplier
@@ -443,8 +475,14 @@ def load_secrets(env_path: Path | None = None) -> SecretsConfig:
     if missing:
         raise ValueError(f"missing required environment variables: {', '.join(missing)}")
 
+    mt5_login_raw = str(os.getenv("MT5_LOGIN"))
+    try:
+        mt5_login = int(mt5_login_raw)
+    except ValueError as exc:
+        raise ValueError(f"MT5_LOGIN must be a numeric account ID, got: {mt5_login_raw!r}") from exc
+
     return SecretsConfig(
-        mt5_login=int(str(os.getenv("MT5_LOGIN"))),
+        mt5_login=mt5_login,
         mt5_password=str(os.getenv("MT5_PASSWORD")),
         mt5_server=str(os.getenv("MT5_SERVER")),
         mt5_terminal_path=os.getenv("MT5_TERMINAL_PATH"),
@@ -470,6 +508,8 @@ def _to_zone_tuple(value: Any) -> tuple[int, int]:
     high = _parse_int_value(value[1], "stochastic zone upper bound")
     if low > high:
         raise ValueError("zone lower bound cannot be greater than upper bound")
+    if low < 0 or high > 100:
+        raise ValueError(f"stochastic zone values must be in [0, 100], got: [{low}, {high}]")
     return (low, high)
 
 
@@ -491,3 +531,53 @@ def _parse_int_value(value: object, name: str) -> int:
         except ValueError as exc:
             raise ValueError(f"{name} must be an integer") from exc
     raise ValueError(f"{name} must be an integer")
+
+
+def _resolve_paths(config: AppConfig, project_root: Path) -> AppConfig:
+    """Resolve relative Path fields against project_root so they work regardless of cwd."""
+
+    def _resolve(p: Path) -> Path:
+        return p if p.is_absolute() else (project_root / p).resolve()
+
+    # frozen dataclass — rebuild with resolved paths
+    return AppConfig(
+        symbols=config.symbols,
+        timeframe=config.timeframe,
+        indicators=config.indicators,
+        data=config.data,
+        execution=config.execution,
+        signal_dedup=SignalDedupConfig(
+            cooldown_minutes=config.signal_dedup.cooldown_minutes,
+            retention_days=config.signal_dedup.retention_days,
+            state_file=_resolve(config.signal_dedup.state_file),
+        ),
+        logging=LoggingConfig(
+            level=config.logging.level,
+            file=_resolve(config.logging.file),
+            max_bytes=config.logging.max_bytes,
+            backup_count=config.logging.backup_count,
+        ),
+        telegram=TelegramConfig(
+            failed_queue_file=_resolve(config.telegram.failed_queue_file),
+            max_queue_size=config.telegram.max_queue_size,
+            max_retries=config.telegram.max_retries,
+            max_failed_retry_count=config.telegram.max_failed_retry_count,
+            request_timeout_seconds=config.telegram.request_timeout_seconds,
+        ),
+        m1_only=config.m1_only,
+        strategy=config.strategy,
+        session_filter=config.session_filter,
+        regime_filter=config.regime_filter,
+        risk_context=config.risk_context,
+        monitoring=MonitoringConfig(
+            heartbeat_enabled=config.monitoring.heartbeat_enabled,
+            heartbeat_interval_seconds=config.monitoring.heartbeat_interval_seconds,
+            heartbeat_ping_url=config.monitoring.heartbeat_ping_url,
+            heartbeat_file=_resolve(config.monitoring.heartbeat_file),
+        ),
+        journal=JournalConfig(
+            enabled=config.journal.enabled,
+            sqlite_path=_resolve(config.journal.sqlite_path),
+        ),
+        health_alerts=config.health_alerts,
+    )
