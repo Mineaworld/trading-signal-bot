@@ -61,6 +61,16 @@ def main() -> int:
                 server=env["MT5_SERVER"],
             )
         )
+        if not login_ok and account_info is not None:
+            # Some brokers (e.g. FundedNext) time out on mt5.login() even though
+            # the terminal is already logged into the correct account.
+            active_login = str(getattr(account_info, "login", ""))
+            active_server = str(getattr(account_info, "server", ""))
+            if active_login == env["MT5_LOGIN"] and active_server == env["MT5_SERVER"]:
+                _print_result(
+                    "login_call", "timed out (broker quirk), but terminal already logged in"
+                )
+                login_ok = True
         _print_result("login", login_ok)
         _print_result("last_error", MetaTrader5.last_error())
 

@@ -78,6 +78,15 @@ class MT5Client:
                 )
             return False
 
+        # Some brokers (e.g. FundedNext) time out on mt5.login().
+        # If the terminal is already logged into the correct account, skip the login call.
+        if self._is_already_logged_in():
+            self._logger.info(
+                "mt5 terminal already logged into correct account, skipping login call"
+            )
+            self._log_active_account()
+            return True
+
         logged_in = bool(
             self._mt5.login(
                 login=self._login,
@@ -250,6 +259,15 @@ class MT5Client:
     def _last_error(self) -> str:
         err = self._mt5.last_error()
         return str(err)
+
+    def _is_already_logged_in(self) -> bool:
+        """Check if the terminal is already logged into the expected account."""
+        account = self._mt5.account_info()
+        if account is None:
+            return False
+        active_login = str(getattr(account, "login", ""))
+        active_server = str(getattr(account, "server", ""))
+        return active_login == str(self._login) and active_server == str(self._server)
 
     def _log_active_account(self) -> None:
         account = self._mt5.account_info()
