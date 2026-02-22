@@ -4,43 +4,35 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Find Python - check common locations since SYSTEM account may not have PATH
-$pythonCandidates = @(
-  "python",
-  "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
-  "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
-  "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe",
-  "C:\Users\Administrator\AppData\Local\Programs\Python\Python312\python.exe",
-  "C:\Users\Administrator\AppData\Local\Programs\Python\Python311\python.exe",
-  "C:\Users\Administrator\AppData\Local\Programs\Python\Python310\python.exe",
-  "C:\Python312\python.exe",
-  "C:\Python311\python.exe",
-  "C:\Python310\python.exe"
+# Find the Poetry virtualenv python.exe directly.
+# The SYSTEM account cannot use `poetry run`, so we call the venv python directly.
+$venvRoots = @(
+  "$env:LOCALAPPDATA\pypoetry\Cache\virtualenvs",
+  "C:\Users\Administrator\AppData\Local\pypoetry\Cache\virtualenvs"
 )
 
-$pythonPath = $null
-foreach ($candidate in $pythonCandidates) {
-  try {
-    $resolved = Get-Command $candidate -ErrorAction SilentlyContinue
-    if ($resolved) {
-      $pythonPath = $resolved.Source
-      break
+$venvPython = $null
+foreach ($root in $venvRoots) {
+  if (Test-Path $root) {
+    $match = Get-ChildItem $root -Directory -Filter "trading-signal-bot-*" | Select-Object -First 1
+    if ($match) {
+      $candidate = Join-Path $match.FullName "Scripts\python.exe"
+      if (Test-Path $candidate) {
+        $venvPython = $candidate
+        break
+      }
     }
-    if (Test-Path $candidate) {
-      $pythonPath = $candidate
-      break
-    }
-  } catch {}
+  }
 }
 
-if (-not $pythonPath) {
-  Write-Error "Python not found. Install Python 3.10+ and ensure it is in PATH or a standard location."
+if (-not $venvPython) {
+  Write-Error "Poetry virtualenv not found. Run 'poetry install' as Administrator first."
   exit 1
 }
 
-$runArgs = @("-m", "poetry", "run", "trading-signal-bot")
+$runArgs = @("-m", "trading_signal_bot")
 if ($DryRun) {
   $runArgs += "--dry-run"
 }
 
-& $pythonPath @runArgs
+& $venvPython @runArgs
