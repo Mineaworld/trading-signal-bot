@@ -54,6 +54,9 @@ def main() -> int:
             )
             return 1
 
+        terminal_info = MetaTrader5.terminal_info()
+        account_info = MetaTrader5.account_info()
+
         login_ok = bool(
             MetaTrader5.login(
                 login=int(env["MT5_LOGIN"]),
@@ -74,8 +77,6 @@ def main() -> int:
         _print_result("login", login_ok)
         _print_result("last_error", MetaTrader5.last_error())
 
-        terminal_info = MetaTrader5.terminal_info()
-        account_info = MetaTrader5.account_info()
         _print_result("terminal_info_present", terminal_info is not None)
         _print_result("account_info_present", account_info is not None)
         api_flag = _read_terminal_api_flag(terminal_info)
