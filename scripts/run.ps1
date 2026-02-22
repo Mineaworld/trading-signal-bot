@@ -30,9 +30,9 @@ if (-not $venvPython) {
   exit 1
 }
 
-$runArgs = @("-m", "trading_signal_bot")
+$runArgs = @("-c", "from trading_signal_bot.main import main; main()")
 if ($DryRun) {
-  $runArgs += "--dry-run"
+  $runArgs = @("-c", "import sys; sys.argv.append('--dry-run'); from trading_signal_bot.main import main; main()")
 }
 
 & $venvPython @runArgs
