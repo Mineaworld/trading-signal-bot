@@ -218,7 +218,7 @@ class MT5Client:
             return None
         for key in ("last", "bid", "ask"):
             value = getattr(tick, key, None)
-            if value is not None:
+            if value is not None and value > 0:
                 return float(value)
         return None
 

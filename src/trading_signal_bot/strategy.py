@@ -272,14 +272,14 @@ class StrategyEvaluator:
                 risk = self._build_risk_context(
                     m15_df=m15_df,
                     direction=Direction.BUY,
-                    entry_price=price if price is not None else m1_close_price,
+                    entry_price=price if price else m1_close_price,
                 )
                 signals.append(
                     self._make_signal(
                         symbol=symbol,
                         direction=Direction.BUY,
                         scenario=Scenario.BUY_S1,
-                        price=price if price is not None else m1_close_price,
+                        price=price if price else m1_close_price,
                         m15_close_time_utc=m15_close_time_utc,
                         m1_close_time_utc=m1_close_time,
                         m15_fast=m15_fast,
@@ -300,14 +300,14 @@ class StrategyEvaluator:
                 risk = self._build_risk_context(
                     m15_df=m15_df,
                     direction=Direction.BUY,
-                    entry_price=price if price is not None else m1_close_price,
+                    entry_price=price if price else m1_close_price,
                 )
                 signals.append(
                     self._make_signal(
                         symbol=symbol,
                         direction=Direction.BUY,
                         scenario=Scenario.BUY_S2,
-                        price=price if price is not None else m1_close_price,
+                        price=price if price else m1_close_price,
                         m15_close_time_utc=m15_close_time_utc,
                         m1_close_time_utc=m1_close_time,
                         m15_fast=m15_fast,
@@ -351,14 +351,14 @@ class StrategyEvaluator:
                 risk = self._build_risk_context(
                     m15_df=m15_df,
                     direction=Direction.SELL,
-                    entry_price=price if price is not None else m1_close_price,
+                    entry_price=price if price else m1_close_price,
                 )
                 signals.append(
                     self._make_signal(
                         symbol=symbol,
                         direction=Direction.SELL,
                         scenario=Scenario.SELL_S1,
-                        price=price if price is not None else m1_close_price,
+                        price=price if price else m1_close_price,
                         m15_close_time_utc=m15_close_time_utc,
                         m1_close_time_utc=m1_close_time,
                         m15_fast=m15_fast,
@@ -379,14 +379,14 @@ class StrategyEvaluator:
                 risk = self._build_risk_context(
                     m15_df=m15_df,
                     direction=Direction.SELL,
-                    entry_price=price if price is not None else m1_close_price,
+                    entry_price=price if price else m1_close_price,
                 )
                 signals.append(
                     self._make_signal(
                         symbol=symbol,
                         direction=Direction.SELL,
                         scenario=Scenario.SELL_S2,
-                        price=price if price is not None else m1_close_price,
+                        price=price if price else m1_close_price,
                         m15_close_time_utc=m15_close_time_utc,
                         m1_close_time_utc=m1_close_time,
                         m15_fast=m15_fast,
@@ -432,7 +432,7 @@ class StrategyEvaluator:
                 symbol=symbol,
                 direction=Direction.BUY,
                 scenario=Scenario.BUY_M1,
-                price=price if price is not None else bar_close_price,
+                price=price if price else bar_close_price,
                 created_at_utc=utc_now(),
                 m1_bar_time_utc=bar_close_dt,
                 m1_lwma_fast=m1_fast,
@@ -447,7 +447,7 @@ class StrategyEvaluator:
                 symbol=symbol,
                 direction=Direction.SELL,
                 scenario=Scenario.SELL_M1,
-                price=price if price is not None else bar_close_price,
+                price=price if price else bar_close_price,
                 created_at_utc=utc_now(),
                 m1_bar_time_utc=bar_close_dt,
                 m1_lwma_fast=m1_fast,
@@ -544,7 +544,7 @@ class StrategyEvaluator:
                     self._make_chain_signal(
                         pending=pending,
                         snapshot=snapshot,
-                        price=price if price is not None else snapshot.close_price,
+                        price=price if price else snapshot.close_price,
                         m15_df=m15_df,
                     ),
                 )
@@ -588,7 +588,7 @@ class StrategyEvaluator:
                     self._make_chain_signal(
                         pending=pending,
                         snapshot=snapshot,
-                        price=price if price is not None else snapshot.close_price,
+                        price=price if price else snapshot.close_price,
                         m15_df=m15_df,
                     ),
                 )
