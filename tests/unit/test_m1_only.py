@@ -244,16 +244,14 @@ def test_m1_only_idempotency_key_uses_m1_bar_time() -> None:
     assert signal.idempotency_key != signal2.idempotency_key
 
 
-def test_m15_m1_telegram_formatting(sample_signal: Signal) -> None:
+def test_m15_m1_telegram_formatting(sample_signal: Signal, tmp_path) -> None:
     """M15+M1 Telegram message uses Red/Black cross language and no |- prefix."""
-    from pathlib import Path
-
     from trading_signal_bot.telegram_notifier import TelegramNotifier
 
     notifier = TelegramNotifier(
         token="fake",
         chat_id="fake",
-        failed_queue_file=Path("/tmp/test_queue.json"),
+        failed_queue_file=tmp_path / "test_queue.json",
         dry_run=True,
     )
     text = notifier._format_signal_text(sample_signal)
@@ -269,16 +267,14 @@ def test_m15_m1_telegram_formatting(sample_signal: Signal) -> None:
     assert "Scenario 1 (Stoch -> Stoch)" in text
 
 
-def test_m1_only_telegram_formatting(m1_only_signal: Signal) -> None:
+def test_m1_only_telegram_formatting(m1_only_signal: Signal, tmp_path) -> None:
     """M1-only Telegram message excludes M15 section and uses correct titles."""
-    from pathlib import Path
-
     from trading_signal_bot.telegram_notifier import TelegramNotifier
 
     notifier = TelegramNotifier(
         token="fake",
         chat_id="fake",
-        failed_queue_file=Path("/tmp/test_queue.json"),
+        failed_queue_file=tmp_path / "test_queue.json",
         dry_run=True,
     )
     text = notifier._format_signal_text(m1_only_signal)

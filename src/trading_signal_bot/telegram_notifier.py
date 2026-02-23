@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -238,7 +239,7 @@ class TelegramNotifier:
             scenario_title,
             "",
             f"Price: {signal.price:,.5f}",
-            f"Time: {local_time.strftime('%Y-%m-%d %I:%M%p').replace(' 0', ' ')}",
+            f"Time: {_format_12h_time(local_time)}",
         ]
 
         if signal.m15_lwma_fast is not None:
@@ -298,6 +299,13 @@ class TelegramNotifier:
             )
 
         return "\n".join(lines)
+
+
+def _format_12h_time(dt: datetime) -> str:
+    """Format datetime as '2026-02-23 1:00PM' — locale-independent, no leading zero."""
+    hour = dt.hour % 12 or 12
+    suffix = "AM" if dt.hour < 12 else "PM"
+    return f"{dt.strftime('%Y-%m-%d')} {hour}:{dt.strftime('%M')}{suffix}"
 
 
 def _parse_retry_after(response: requests.Response) -> int:

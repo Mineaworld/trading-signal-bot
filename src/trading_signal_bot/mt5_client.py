@@ -216,6 +216,8 @@ class MT5Client:
         tick = self._mt5.symbol_info_tick(broker_symbol)
         if tick is None:
             return None
+        # Forex tick.last returns 0.0; reject non-positive to fall through to bid/ask.
+        # Safe: this bot only trades spot forex/metals where prices are always positive.
         for key in ("last", "bid", "ask"):
             value = getattr(tick, key, None)
             if value is not None and value > 0:
