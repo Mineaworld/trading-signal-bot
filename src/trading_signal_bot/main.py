@@ -257,7 +257,6 @@ class TradingSignalBotApp:
                     break
 
                 if self._config.live_bar.enabled:
-                    self._should_run_m15_cycle()
                     self._run_m15_cycle()
                 elif self._should_run_m15_cycle():
                     self._run_m15_cycle()

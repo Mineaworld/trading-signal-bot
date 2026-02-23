@@ -55,7 +55,8 @@ class TestFilterBars:
 class TestLiveBarConfig:
     def test_parsed_from_yaml_with_defaults(self, tmp_path: Path) -> None:
         """LiveBarConfig defaults to enabled=False, poll_interval_seconds=15."""
-        yaml_content = dedent("""\
+        yaml_content = dedent(
+            """\
             symbols:
               XAUUSD: "XAUUSD"
             timeframes:
@@ -93,7 +94,8 @@ class TestLiveBarConfig:
               max_queue_size: 50
               max_retries: 3
               request_timeout_seconds: 15
-        """)
+        """
+        )
         cfg_file = tmp_path / "settings.yaml"
         cfg_file.write_text(yaml_content, encoding="utf-8")
         config = load_yaml_config(cfg_file)
