@@ -6,6 +6,7 @@ import signal as signal_module
 import time
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -210,7 +211,10 @@ class TradingSignalBotApp:
     def _run_forever_m15_only(self) -> None:
         while not self._shutdown_requested:
             try:
-                wait_seconds = seconds_until_next_m15_close()
+                if self._config.live_bar.enabled:
+                    wait_seconds = float(self._config.live_bar.poll_interval_seconds)
+                else:
+                    wait_seconds = seconds_until_next_m15_close()
                 self._logger.info("sleeping %.2fs until next M15 close", wait_seconds)
                 self._interruptible_sleep(wait_seconds)
                 if self._shutdown_requested:
@@ -243,13 +247,19 @@ class TradingSignalBotApp:
     def _run_forever_with_m1_only(self) -> None:
         while not self._shutdown_requested:
             try:
-                wait_seconds = seconds_until_next_m1_close()
+                if self._config.live_bar.enabled:
+                    wait_seconds = float(self._config.live_bar.poll_interval_seconds)
+                else:
+                    wait_seconds = seconds_until_next_m1_close()
                 self._logger.info("sleeping %.2fs until next M1 close", wait_seconds)
                 self._interruptible_sleep(wait_seconds)
                 if self._shutdown_requested:
                     break
 
-                if self._should_run_m15_cycle():
+                if self._config.live_bar.enabled:
+                    self._should_run_m15_cycle()
+                    self._run_m15_cycle()
+                elif self._should_run_m15_cycle():
                     self._run_m15_cycle()
                 self._run_m1_only_cycle()
 
@@ -319,7 +329,7 @@ class TradingSignalBotApp:
         m15 = self._mt5.fetch_candles(
             symbol, self._config.timeframe.primary, self._config.data.candle_buffer
         )
-        m15_closed = _closed_bars_only(m15)
+        m15_closed = _filter_bars(m15, self._config.live_bar.enabled)
         if (
             len(m15_closed)
             < max(self._config.indicators.lwma_slow, self._config.indicators.stoch_k) + 2
@@ -337,7 +347,7 @@ class TradingSignalBotApp:
             m1 = self._mt5.fetch_candles(
                 symbol, self._config.timeframe.confirmation, self._config.data.candle_buffer
             )
-            m1_closed = _closed_bars_only(m1)
+            m1_closed = _filter_bars(m1, self._config.live_bar.enabled)
         current_price = self._mt5.get_current_price(symbol)
         latest_pending_pos = pending_positions[-1]
 
@@ -374,7 +384,8 @@ class TradingSignalBotApp:
                         len(triggers),
                     )
 
-            self._last_processed_m15_close[symbol] = m15_close
+            if not self._config.live_bar.enabled or m15_close <= utc_now():
+                self._last_processed_m15_close[symbol] = m15_close
 
             if not cycle_signals:
                 self._logger.info("no signal for %s at %s", symbol, m15_close)
@@ -393,7 +404,7 @@ class TradingSignalBotApp:
         m1 = self._mt5.fetch_candles(
             symbol, self._config.timeframe.confirmation, self._config.data.candle_buffer
         )
-        m1_closed = _closed_bars_only(m1)
+        m1_closed = _filter_bars(m1, self._config.live_bar.enabled)
         if m1_closed.empty:
             return
 
@@ -422,7 +433,8 @@ class TradingSignalBotApp:
         for pos in pending_positions:
             m1_close = _as_utc(m1_close_times.iloc[pos])
             if self._config.session_filter.enabled and not self._is_session_active(m1_close):
-                self._last_processed_m1_close[symbol] = m1_close
+                if not self._config.live_bar.enabled or m1_close <= utc_now():
+                    self._last_processed_m1_close[symbol] = m1_close
                 continue
             m1_slice = m1_closed.iloc[: pos + 1].reset_index(drop=True)
             signal = self._strategy.evaluate_m1_only(
@@ -431,11 +443,13 @@ class TradingSignalBotApp:
                 price=current_price if pos == latest_pending else None,
             )
             if signal is None:
-                self._last_processed_m1_close[symbol] = m1_close
+                if not self._config.live_bar.enabled or m1_close <= utc_now():
+                    self._last_processed_m1_close[symbol] = m1_close
                 continue
 
             self._emit_signals([signal], context="M1-only")
-            self._last_processed_m1_close[symbol] = m1_close
+            if not self._config.live_bar.enabled or m1_close <= utc_now():
+                self._last_processed_m1_close[symbol] = m1_close
 
     def _evaluate_pending_chain_signal(self, symbol: str) -> None:
         pending_map = self._pending_setups.get(symbol)
@@ -447,7 +461,7 @@ class TradingSignalBotApp:
         m1 = self._mt5.fetch_candles(
             symbol, self._config.timeframe.confirmation, self._config.data.candle_buffer
         )
-        m1_closed = _closed_bars_only(m1)
+        m1_closed = _filter_bars(m1, self._config.live_bar.enabled)
         if m1_closed.empty:
             return
         snapshot = self._strategy.latest_m1_snapshot(m1_closed)
@@ -657,6 +671,10 @@ class TradingSignalBotApp:
         if not signals:
             return
 
+        # Mark signals as live-bar when live_bar mode is enabled (skip replay context)
+        if self._config.live_bar.enabled and context != "replay":
+            signals = [replace(s, is_live_bar=True) for s in signals]
+
         grouped: dict[tuple[str, Direction], list[Signal]] = defaultdict(list)
         for signal in signals:
             grouped[(signal.symbol, signal.direction)].append(signal)
@@ -710,6 +728,7 @@ class TradingSignalBotApp:
             risk_invalidation_price=base.risk_invalidation_price,
             risk_tp1_price=base.risk_tp1_price,
             risk_tp2_price=base.risk_tp2_price,
+            is_live_bar=base.is_live_bar,
         )
 
     def _send_with_record(self, signal: Signal, context: str) -> bool:
@@ -794,6 +813,7 @@ def main() -> None:
         file_path=config.logging.file,
         max_bytes=config.logging.max_bytes,
         backup_count=config.logging.backup_count,
+        timezone=config.logging.timezone,
     )
     logger = logging.getLogger("main")
     logger.info("starting trading signal bot dry_run=%s", args.dry_run)
@@ -808,6 +828,13 @@ def _closed_bars_only(df: pd.DataFrame) -> pd.DataFrame:
     if len(df) <= 1:
         return df.iloc[0:0].copy()
     return df.iloc[:-1].reset_index(drop=True)
+
+
+def _filter_bars(df: pd.DataFrame, include_forming: bool) -> pd.DataFrame:
+    """Return all bars (including forming) when live-bar mode is on, else closed only."""
+    if include_forming:
+        return df.reset_index(drop=True)
+    return _closed_bars_only(df)
 
 
 def _as_utc(value: int | float | str | date | datetime | pd.Timestamp) -> datetime:
