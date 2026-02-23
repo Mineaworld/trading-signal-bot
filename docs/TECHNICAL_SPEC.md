@@ -403,7 +403,12 @@ For each symbol in symbols:
 | `m1_only.enabled` | bool | No | false | Enable M1-only signal evaluation |
 | `live_bar.enabled` | bool | No | false | Evaluate forming (unclosed) bars instead of waiting for candle close |
 | `live_bar.poll_interval_seconds` | int | No | 15 | Polling interval in seconds when live-bar mode is on |
-| `logging.timezone` | str | No | UTC | Timezone for log timestamps (e.g. `Asia/Phnom_Penh`) |
+| `health_alerts.enabled` | bool | No | false | Enable Telegram health alerts |
+| `health_alerts.chat_id` | str | No | "" | Override health-alert chat ID (empty = reuse `TELEGRAM_CHAT_ID`) |
+| `health_alerts.throttle_minutes` | int | No | 15 | Minimum time between repeated health alerts of the same event |
+| `health_alerts.symbol_degradation_enabled` | bool | No | true | Enable per-symbol degraded/recovered alerts |
+| `health_alerts.symbol_degradation_threshold_cycles` | int | No | 3 | Consecutive failed symbol cycles before degraded alert |
+| `health_alerts.symbol_recovery_alerts` | bool | No | true | Send one recovery alert when a degraded symbol succeeds again |
 | `strategy.enable_legacy_scenarios` | bool | No | true | Keep legacy S1/S2 logic active |
 | `strategy.chain.enabled` | bool | No | true | Enable chained M15->M1 setup logic |
 | `strategy.chain.require_opposite_zone_on_lwma_cross` | bool | No | true | Require opposite stochastic zone at M1 LWMA step |

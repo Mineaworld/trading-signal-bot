@@ -314,10 +314,14 @@ When there's a new version:
 
 ```powershell
 cd C:\trading-signal-bot
-.\scripts\deploy.ps1
+Stop-ScheduledTask -TaskName "TradingSignalBot"
+git pull --ff-only
+poetry install
+Start-ScheduledTask -TaskName "TradingSignalBot"
 ```
 
-This pulls the latest code, runs tests, and restarts the service. If anything fails, it automatically rolls back.
+This updates the code, installs dependencies, and restarts the scheduled task.
+If the task fails to start, check `logs\bot.log` and verify MT5 is open/logged in.
 
 ---
 
