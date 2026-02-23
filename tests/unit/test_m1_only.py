@@ -244,24 +244,48 @@ def test_m1_only_idempotency_key_uses_m1_bar_time() -> None:
     assert signal.idempotency_key != signal2.idempotency_key
 
 
-def test_m1_only_telegram_formatting(m1_only_signal: Signal) -> None:
-    """M1-only Telegram message excludes M15 section and uses correct titles."""
-    from pathlib import Path
-
+def test_m15_m1_telegram_formatting(sample_signal: Signal, tmp_path) -> None:
+    """M15+M1 Telegram message uses Red/Black cross language and no |- prefix."""
     from trading_signal_bot.telegram_notifier import TelegramNotifier
 
     notifier = TelegramNotifier(
         token="fake",
         chat_id="fake",
-        failed_queue_file=Path("/tmp/test_queue.json"),
+        failed_queue_file=tmp_path / "test_queue.json",
+        dry_run=True,
+    )
+    text = notifier._format_signal_text(sample_signal)
+
+    assert "M15 Indicators:" in text
+    assert "M1 Confirmation:" in text
+    assert "|-" not in text
+    assert "Red" in text
+    assert "Black" in text
+    assert "crossed above" in text
+    assert "buy zone" in text
+    assert "UTC+7" not in text
+    assert "Scenario 1 (Stoch -> Stoch)" in text
+
+
+def test_m1_only_telegram_formatting(m1_only_signal: Signal, tmp_path) -> None:
+    """M1-only Telegram message excludes M15 section and uses correct titles."""
+    from trading_signal_bot.telegram_notifier import TelegramNotifier
+
+    notifier = TelegramNotifier(
+        token="fake",
+        chat_id="fake",
+        failed_queue_file=tmp_path / "test_queue.json",
         dry_run=True,
     )
     text = notifier._format_signal_text(m1_only_signal)
 
-    assert "M1-Only (Low Confidence)" in text
+    assert "M1 Signal" in text
     assert "M15 Indicators:" not in text
     assert "M1 Confirmation:" not in text
     assert "M1 Indicators:" in text
-    assert "2026-02-11 21:29 UTC+7" in text
+    assert "2026-02-11 9:29PM" in text
     assert "XAUUSD" in text
     assert "#BUY_M1" not in text
+    assert "|-" not in text
+    assert "Red" in text
+    assert "Black" in text

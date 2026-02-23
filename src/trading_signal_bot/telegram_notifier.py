@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import requests
 
-from trading_signal_bot.models import Scenario, Signal
+from trading_signal_bot.models import Direction, Scenario, Signal
 from trading_signal_bot.utils import atomic_write_json, read_json, utc_now
 
 PHNOM_PENH_TZ = ZoneInfo("Asia/Phnom_Penh")
@@ -220,8 +221,8 @@ class TelegramNotifier:
             Scenario.BUY_S2: "Scenario 2 (Stoch -> LWMA)",
             Scenario.SELL_S1: "Scenario 1 (Stoch -> Stoch)",
             Scenario.SELL_S2: "Scenario 2 (Stoch -> LWMA)",
-            Scenario.BUY_M1: "M1-Only (Low Confidence)",
-            Scenario.SELL_M1: "M1-Only (Low Confidence)",
+            Scenario.BUY_M1: "M1 Signal",
+            Scenario.SELL_M1: "M1 Signal",
             Scenario.BUY_SUMMARY: "Summary (Multiple BUY Scenarios)",
             Scenario.SELL_SUMMARY: "Summary (Multiple SELL Scenarios)",
             Scenario.BUY_CHAIN: "BUY Chain",
@@ -238,30 +239,41 @@ class TelegramNotifier:
             scenario_title,
             "",
             f"Price: {signal.price:,.5f}",
-            f"Time: {local_time.strftime('%Y-%m-%d %H:%M')} UTC+7",
+            f"Time: {_format_12h_time(local_time)}",
         ]
 
         if signal.m15_lwma_fast is not None:
+            lwma_dir = "above" if signal.direction == Direction.BUY else "below"
             lines.extend(
                 [
                     "",
                     "M15 Indicators:",
-                    f"|- LWMA 200: {signal.m15_lwma_fast:,.5f}",
-                    f"|- LWMA 350: {signal.m15_lwma_slow:,.5f}",
-                    f"|- Stoch %K: {signal.m15_stoch_k:,.2f}",
-                    f"|- Stoch %D: {signal.m15_stoch_d:,.2f}",
+                    f"LWMA Red (200) crossed {lwma_dir} Black (350)",
+                    f"  Red: {signal.m15_lwma_fast:,.5f} | Black: {signal.m15_lwma_slow:,.5f}",
+                ]
+            )
+            zone_label = "buy zone" if signal.direction == Direction.BUY else "sell zone"
+            stoch_dir = "above" if signal.direction == Direction.BUY else "below"
+            lines.extend(
+                [
+                    f"Stoch Red (%K) crossed {stoch_dir} Black (%D) ({zone_label})",
+                    f"  Red: {signal.m15_stoch_k:,.2f} | Black: {signal.m15_stoch_d:,.2f}",
                 ]
             )
 
         m1_header = "M1 Confirmation:" if signal.m15_lwma_fast is not None else "M1 Indicators:"
         lines.extend(["", m1_header])
 
-        if signal.m1_stoch_k is not None and signal.m1_stoch_d is not None:
-            lines.append(f"|- Stoch %K: {signal.m1_stoch_k:,.2f}")
-            lines.append(f"|- Stoch %D: {signal.m1_stoch_d:,.2f}")
         if signal.m1_lwma_fast is not None and signal.m1_lwma_slow is not None:
-            lines.append(f"|- LWMA 200: {signal.m1_lwma_fast:,.5f}")
-            lines.append(f"|- LWMA 350: {signal.m1_lwma_slow:,.5f}")
+            lwma_dir = "above" if signal.direction == Direction.BUY else "below"
+            lines.append(f"LWMA Red (200) crossed {lwma_dir} Black (350)")
+            lines.append(f"  Red: {signal.m1_lwma_fast:,.5f} | Black: {signal.m1_lwma_slow:,.5f}")
+
+        if signal.m1_stoch_k is not None and signal.m1_stoch_d is not None:
+            zone_label = "buy zone" if signal.direction == Direction.BUY else "sell zone"
+            stoch_dir = "above" if signal.direction == Direction.BUY else "below"
+            lines.append(f"Stoch Red (%K) crossed {stoch_dir} Black (%D) ({zone_label})")
+            lines.append(f"  Red: {signal.m1_stoch_k:,.2f} | Black: {signal.m1_stoch_d:,.2f}")
 
         if signal.matched_scenarios:
             values = ", ".join(item.value for item in signal.matched_scenarios)
@@ -279,14 +291,21 @@ class TelegramNotifier:
                 [
                     "",
                     "Risk Context:",
-                    f"|- Stop Distance: {risk_stop_distance:,.5f}",
-                    f"|- Invalidation: {risk_invalidation_price:,.5f}",
-                    f"|- TP1: {risk_tp1_price:,.5f}",
-                    f"|- TP2: {risk_tp2_price:,.5f}",
+                    f"Stop Distance: {risk_stop_distance:,.5f}",
+                    f"Invalidation: {risk_invalidation_price:,.5f}",
+                    f"TP1: {risk_tp1_price:,.5f}",
+                    f"TP2: {risk_tp2_price:,.5f}",
                 ]
             )
 
         return "\n".join(lines)
+
+
+def _format_12h_time(dt: datetime) -> str:
+    """Format datetime as '2026-02-23 1:00PM' — locale-independent, no leading zero."""
+    hour = dt.hour % 12 or 12
+    suffix = "AM" if dt.hour < 12 else "PM"
+    return f"{dt.strftime('%Y-%m-%d')} {hour}:{dt.strftime('%M')}{suffix}"
 
 
 def _parse_retry_after(response: requests.Response) -> int:
