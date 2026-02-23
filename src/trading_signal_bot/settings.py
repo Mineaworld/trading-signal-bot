@@ -47,6 +47,7 @@ class LoggingConfig:
     file: Path
     max_bytes: int
     backup_count: int
+    timezone: str = "UTC"
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,14 @@ class TelegramConfig:
 @dataclass(frozen=True)
 class M1OnlyConfig:
     enabled: bool
+
+
+@dataclass(frozen=True)
+class LiveBarConfig:
+    """Configuration for live (forming) bar evaluation."""
+
+    enabled: bool
+    poll_interval_seconds: int
 
 
 @dataclass(frozen=True)
@@ -141,6 +150,7 @@ class AppConfig:
     logging: LoggingConfig
     telegram: TelegramConfig
     m1_only: M1OnlyConfig
+    live_bar: LiveBarConfig
     strategy: StrategyConfig
     session_filter: SessionFilterConfig
     regime_filter: RegimeFilterConfig
@@ -192,6 +202,9 @@ def load_yaml_config(config_path: Path) -> AppConfig:
     m1_only_cfg = raw.get("m1_only", {"enabled": False})
     if not isinstance(m1_only_cfg, dict):
         m1_only_cfg = {"enabled": False}
+    live_bar_cfg = raw.get("live_bar", {})
+    if not isinstance(live_bar_cfg, dict):
+        live_bar_cfg = {}
     if not isinstance(session_filter_cfg, dict):
         session_filter_cfg = {}
     if not isinstance(regime_filter_cfg, dict):
@@ -301,6 +314,7 @@ def load_yaml_config(config_path: Path) -> AppConfig:
             file=Path(str(logging_cfg["file"])),
             max_bytes=_to_int_min(logging_cfg["max_bytes"], "logging.max_bytes", 1024),
             backup_count=_to_int_min(logging_cfg["backup_count"], "logging.backup_count", 1),
+            timezone=str(logging_cfg.get("timezone", "UTC")),
         ),
         telegram=TelegramConfig(
             failed_queue_file=Path(str(telegram_cfg["failed_queue_file"])),
@@ -319,6 +333,14 @@ def load_yaml_config(config_path: Path) -> AppConfig:
         ),
         m1_only=M1OnlyConfig(
             enabled=bool(m1_only_cfg.get("enabled", False)),
+        ),
+        live_bar=LiveBarConfig(
+            enabled=bool(live_bar_cfg.get("enabled", False)),
+            poll_interval_seconds=_to_int_min(
+                live_bar_cfg.get("poll_interval_seconds", 15),
+                "live_bar.poll_interval_seconds",
+                1,
+            ),
         ),
         strategy=StrategyConfig(
             enable_legacy_scenarios=bool(strategy_cfg.get("enable_legacy_scenarios", True)),
@@ -442,6 +464,12 @@ def _validate_config(config: AppConfig) -> None:
                 f"session_filter.timezone is invalid: {config.session_filter.timezone!r}"
             ) from exc
 
+    # Validate logging timezone
+    try:
+        ZoneInfo(config.logging.timezone)
+    except (ZoneInfoNotFoundError, KeyError) as exc:
+        raise ValueError(f"logging.timezone is invalid: {config.logging.timezone!r}") from exc
+
     # Validate session window time formats
     _hhmm_re = re.compile(r"^\d{2}:\d{2}$")
     for window in config.session_filter.windows:
@@ -562,6 +590,7 @@ def _resolve_paths(config: AppConfig, project_root: Path) -> AppConfig:
             file=_resolve(config.logging.file),
             max_bytes=config.logging.max_bytes,
             backup_count=config.logging.backup_count,
+            timezone=config.logging.timezone,
         ),
         telegram=TelegramConfig(
             failed_queue_file=_resolve(config.telegram.failed_queue_file),
@@ -571,6 +600,7 @@ def _resolve_paths(config: AppConfig, project_root: Path) -> AppConfig:
             request_timeout_seconds=config.telegram.request_timeout_seconds,
         ),
         m1_only=config.m1_only,
+        live_bar=config.live_bar,
         strategy=config.strategy,
         session_filter=config.session_filter,
         regime_filter=config.regime_filter,
