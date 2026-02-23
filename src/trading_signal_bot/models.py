@@ -72,6 +72,7 @@ class Signal:
     m1_stoch_k: float | None = None
     m1_stoch_d: float | None = None
     matched_scenarios: list[Scenario] | None = None
+    is_live_bar: bool = False
     risk_stop_distance: float | None = None
     risk_invalidation_price: float | None = None
     risk_tp1_price: float | None = None
@@ -106,6 +107,7 @@ class Signal:
         payload["matched_scenarios"] = (
             [item.value for item in self.matched_scenarios] if self.matched_scenarios else None
         )
+        payload["is_live_bar"] = self.is_live_bar
         return payload
 
     @classmethod
@@ -176,6 +178,7 @@ class Signal:
                 if payload.get("risk_tp2_price") is not None
                 else None
             ),
+            is_live_bar=bool(payload.get("is_live_bar", False)),
         )
 
 

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 def utc_now() -> datetime:
@@ -31,11 +32,36 @@ def seconds_until_next_m1_close(now: datetime | None = None) -> float:
     return 1.0 if wait <= 0 else wait
 
 
-def setup_logging(level: str, file_path: Path, max_bytes: int, backup_count: int) -> logging.Logger:
+class _TzFormatter(logging.Formatter):
+    """Formatter that renders timestamps in a configurable timezone."""
+
+    def __init__(self, fmt: str, datefmt: str, tz: ZoneInfo) -> None:
+        super().__init__(fmt=fmt, datefmt=datefmt)
+        self._tz = tz
+
+    def formatTime(  # noqa: N802
+        self, record: logging.LogRecord, datefmt: str | None = None
+    ) -> str:
+        dt = datetime.fromtimestamp(record.created, tz=self._tz)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.isoformat()
+
+
+def setup_logging(
+    level: str,
+    file_path: Path,
+    max_bytes: int,
+    backup_count: int,
+    timezone: str = "UTC",
+) -> logging.Logger:
+    """Configure root logger with console + rotating file handlers."""
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    formatter = logging.Formatter(
+    tz = ZoneInfo(timezone)
+    formatter = _TzFormatter(
         fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        tz=tz,
     )
 
     root = logging.getLogger()
