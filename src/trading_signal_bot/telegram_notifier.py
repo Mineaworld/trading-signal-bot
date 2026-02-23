@@ -232,8 +232,9 @@ class TelegramNotifier:
 
         display_time = signal.m15_bar_time_utc or signal.m1_bar_time_utc
         local_time = display_time.astimezone(PHNOM_PENH_TZ)
+        live_tag = "[LIVE] " if getattr(signal, "is_live_bar", False) else ""
         lines = [
-            f"{signal.direction.value} {signal.symbol}",
+            f"{live_tag}{signal.direction.value} {signal.symbol}",
             scenario_title,
             "",
             f"Price: {signal.price:,.5f}",
