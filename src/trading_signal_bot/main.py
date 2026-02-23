@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import signal as signal_module
+import sys
 import time
 from collections import defaultdict
 from collections.abc import Iterable
@@ -70,6 +71,9 @@ class TradingSignalBotApp:
         self._last_heartbeat_at: datetime | None = None
         self._consecutive_failures: int = 0
         self._shutdown_requested: bool = False
+        # Per-symbol health counters are runtime-only and reset on restart.
+        self._symbol_failure_counts: dict[str, int] = {}
+        self._symbol_degraded_since: dict[str, datetime] = {}
         self._session_tz = ZoneInfo(config.session_filter.timezone)
         self._session_windows: list[tuple[int, int]] = [
             _parse_hhmm_window(window.start, window.end) for window in config.session_filter.windows
@@ -296,8 +300,10 @@ class TradingSignalBotApp:
         for symbol in self._config.symbols:
             try:
                 self._process_symbol(symbol)
+                self._record_symbol_success(symbol, context="M15")
             except Exception:
                 self._logger.exception("symbol processing error: %s", symbol)
+                self._record_symbol_failure(symbol, context="M15")
 
     def _run_m1_only_cycle(self) -> None:
         for symbol in self._config.symbols:
@@ -305,8 +311,71 @@ class TradingSignalBotApp:
                 if self._config.strategy.chain.enabled:
                     self._evaluate_pending_chain_signal(symbol)
                 self._evaluate_m1_only_signal(symbol)
+                self._record_symbol_success(symbol, context="M1")
             except Exception:
                 self._logger.exception("M1 processing error: %s", symbol)
+                self._record_symbol_failure(symbol, context="M1")
+
+    def _record_symbol_success(self, symbol: str, context: str) -> None:
+        previous_failures = self._symbol_failure_counts.get(symbol, 0)
+        self._symbol_failure_counts[symbol] = 0
+        degraded_since = self._symbol_degraded_since.pop(symbol, None)
+        if (
+            degraded_since is not None
+            and self._config.health_alerts.symbol_degradation_enabled
+            and self._config.health_alerts.symbol_recovery_alerts
+        ):
+            self._logger.info(
+                "symbol recovered: %s context=%s failed_cycles=%s degraded_since=%s",
+                symbol,
+                context,
+                previous_failures,
+                degraded_since.isoformat(),
+            )
+            try:
+                self._health.on_symbol_recovered(symbol, context, previous_failures)
+            except Exception:
+                self._logger.exception("failed to send symbol recovery alert for %s", symbol)
+
+    def _record_symbol_failure(self, symbol: str, context: str) -> None:
+        count = self._symbol_failure_counts.get(symbol, 0) + 1
+        self._symbol_failure_counts[symbol] = count
+        last_error = self._current_exception_summary()
+        threshold = self._config.health_alerts.symbol_degradation_threshold_cycles
+        if not self._config.health_alerts.symbol_degradation_enabled or count < threshold:
+            return
+
+        degraded_since = self._symbol_degraded_since.get(symbol)
+        if degraded_since is None:
+            degraded_since = utc_now()
+            self._symbol_degraded_since[symbol] = degraded_since
+            self._logger.warning(
+                "symbol entered degraded state: %s context=%s failed_cycles=%s",
+                symbol,
+                context,
+                count,
+            )
+
+        # Intentionally call on every failed cycle once threshold is crossed.
+        # HealthAlerter throttling controls reminder frequency.
+        try:
+            self._health.on_symbol_degraded(
+                symbol=symbol,
+                count=count,
+                context=context,
+                last_error=last_error,
+            )
+        except Exception:
+            self._logger.exception("failed to send symbol degraded alert for %s", symbol)
+
+    def _current_exception_summary(self, max_len: int = 200) -> str:
+        _, exc, _ = sys.exc_info()
+        if exc is None:
+            return "unknown"
+        summary = f"{exc.__class__.__name__}: {exc}"
+        if len(summary) > max_len:
+            return summary[: max_len - 3] + "..."
+        return summary
 
     def _should_run_m15_cycle(self, now: datetime | None = None) -> bool:
         current = now or datetime.now(timezone.utc)
@@ -788,7 +857,13 @@ class TradingSignalBotApp:
         ).strip()
         if ping_url:
             try:
-                self._http_session.post(ping_url, json=payload, timeout=10)
+                response = self._http_session.post(ping_url, json=payload, timeout=10)
+                if not (200 <= response.status_code < 300):
+                    self._logger.warning(
+                        "heartbeat ping non-2xx: status=%s body=%s",
+                        response.status_code,
+                        response.text[:200],
+                    )
             except requests.RequestException as exc:
                 self._logger.warning("heartbeat ping failed: %s", exc)
         self._last_heartbeat_at = now

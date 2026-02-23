@@ -131,6 +131,9 @@ class HealthAlertsConfig:
     enabled: bool
     chat_id: str
     throttle_minutes: int
+    symbol_degradation_enabled: bool
+    symbol_degradation_threshold_cycles: int
+    symbol_recovery_alerts: bool
 
 
 @dataclass(frozen=True)
@@ -396,6 +399,15 @@ def load_yaml_config(config_path: Path) -> AppConfig:
                 "health_alerts.throttle_minutes",
                 1,
             ),
+            symbol_degradation_enabled=bool(
+                health_alerts_cfg.get("symbol_degradation_enabled", True)
+            ),
+            symbol_degradation_threshold_cycles=_to_int_min(
+                health_alerts_cfg.get("symbol_degradation_threshold_cycles", 3),
+                "health_alerts.symbol_degradation_threshold_cycles",
+                1,
+            ),
+            symbol_recovery_alerts=bool(health_alerts_cfg.get("symbol_recovery_alerts", True)),
         ),
     )
 
@@ -488,6 +500,9 @@ def _validate_config(config: AppConfig) -> None:
                 "risk_context.atr_stop_multiplier=%.2f is outside typical range [0.5, 3.0]",
                 mult,
             )
+
+    if config.health_alerts.symbol_degradation_threshold_cycles < 1:
+        raise ValueError("health_alerts.symbol_degradation_threshold_cycles must be >= 1")
 
 
 def load_secrets(env_path: Path | None = None) -> SecretsConfig:

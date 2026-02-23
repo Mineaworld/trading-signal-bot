@@ -243,6 +243,14 @@ M1 Confirmation:
 |- Stoch %D: 14.50
 ```
 
+When `live_bar.enabled: true`, signals from forming bars are prefixed with `[LIVE]`:
+
+```text
+[LIVE] BUY XAUUSD
+Scenario 1 (Stoch -> Stoch)
+...
+```
+
 ---
 
 ## 3. Algorithm Specifications
@@ -297,13 +305,16 @@ crossed_below = (line_a[-2] >= line_b[-2]) AND (line_a[-1] < line_b[-1])
 ### 3.4 Smart Sleep Calculation
 
 ```
-Input:  current_time_utc
+Input:  current_time_utc, live_bar_config
 Output: seconds_to_sleep
 
-next_m15_close = current_time rounded UP to next 15-minute boundary
-seconds_to_sleep = (next_m15_close - current_time).total_seconds()
-if seconds_to_sleep <= 0:
-    seconds_to_sleep = 1  # safety minimum
+if live_bar_config.enabled:
+    seconds_to_sleep = live_bar_config.poll_interval_seconds
+else:
+    next_m15_close = current_time rounded UP to next 15-minute boundary
+    seconds_to_sleep = (next_m15_close - current_time).total_seconds()
+    if seconds_to_sleep <= 0:
+        seconds_to_sleep = 1  # safety minimum
 ```
 
 ### 3.5 Dual-Key Dedup Logic
@@ -383,12 +394,21 @@ For each symbol in symbols:
 | `logging.file` | str | Yes | logs/bot.log | Log file path |
 | `logging.max_bytes` | int | Yes | 5242880 | Max log file size (5MB) |
 | `logging.backup_count` | int | Yes | 3 | Rotated log file count |
+| `logging.timezone` | str | No | UTC | Timezone for log timestamps |
 | `telegram.failed_queue_file` | str | Yes | data/failed_signals.json | Failed queue path |
 | `telegram.max_queue_size` | int | Yes | 50 | Max queued failed signals |
 | `telegram.max_retries` | int | Yes | 3 | Send retry count |
 | `telegram.max_failed_retry_count` | int | Yes | 12 | Max retries from failed queue |
 | `telegram.request_timeout_seconds` | int | Yes | 15 | HTTP request timeout |
 | `m1_only.enabled` | bool | No | false | Enable M1-only signal evaluation |
+| `live_bar.enabled` | bool | No | false | Evaluate forming (unclosed) bars instead of waiting for candle close |
+| `live_bar.poll_interval_seconds` | int | No | 15 | Polling interval in seconds when live-bar mode is on |
+| `health_alerts.enabled` | bool | No | false | Enable Telegram health alerts |
+| `health_alerts.chat_id` | str | No | "" | Override health-alert chat ID (empty = reuse `TELEGRAM_CHAT_ID`) |
+| `health_alerts.throttle_minutes` | int | No | 15 | Minimum time between repeated health alerts of the same event |
+| `health_alerts.symbol_degradation_enabled` | bool | No | true | Enable per-symbol degraded/recovered alerts |
+| `health_alerts.symbol_degradation_threshold_cycles` | int | No | 3 | Consecutive failed symbol cycles before degraded alert |
+| `health_alerts.symbol_recovery_alerts` | bool | No | true | Send one recovery alert when a degraded symbol succeeds again |
 | `strategy.enable_legacy_scenarios` | bool | No | true | Keep legacy S1/S2 logic active |
 | `strategy.chain.enabled` | bool | No | true | Enable chained M15->M1 setup logic |
 | `strategy.chain.require_opposite_zone_on_lwma_cross` | bool | No | true | Require opposite stochastic zone at M1 LWMA step |

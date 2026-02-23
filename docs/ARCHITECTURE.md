@@ -38,12 +38,12 @@
 
 ### 1.3 Design Principles
 - **Single-process synchronous** - no threads, no async. Predictable, debuggable.
-- **Closed-bar only** - never use forming candle data. Eliminates look-ahead bias.
+- **Closed-bar by default** - forming candle data excluded unless `live_bar.enabled: true`. When live-bar mode is on, the bot polls every N seconds and evaluates the forming bar. Signals from forming bars are tagged `[LIVE]` in Telegram. Cursor guards prevent skipping re-evaluation across polls.
 - **Fail-safe** - every external call (MT5, Telegram) has retry + fallback. Bot never crashes.
 - **Stateless evaluation** - each M15 cycle is self-contained. Only dedup state persists.
 - **Lazy fetching** - M1 data fetched only when M15 conditions pass. Minimizes API calls.
 - **Plain-text alerts** - no HTML tags and no hashtags in Telegram messages.
-- **Local-time presentation** - alert timestamp rendered in UTC+7 for operator readability.
+- **Local-time presentation** - alert timestamp rendered in UTC+7 for operator readability. Log timestamps rendered in configurable timezone (default UTC, set via `logging.timezone`).
 
 ---
 

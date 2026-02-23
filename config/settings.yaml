@@ -96,3 +96,6 @@ health_alerts:
   enabled: true
   chat_id: ""  # empty = reuse signal chat_id from .env
   throttle_minutes: 15
+  symbol_degradation_enabled: true
+  symbol_degradation_threshold_cycles: 3
+  symbol_recovery_alerts: true

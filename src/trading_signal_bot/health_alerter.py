@@ -85,6 +85,29 @@ class HealthAlerter:
             f"{count} consecutive loop failures",
         )
 
+    def on_symbol_degraded(
+        self,
+        symbol: str,
+        count: int,
+        context: str,
+        last_error: str,
+    ) -> bool:
+        """Alert when a symbol repeatedly fails processing."""
+        return self.alert(
+            f"symbol_degraded:{symbol}",
+            (
+                f"Symbol degraded: {symbol} ({context}) failed {count} cycles; "
+                f"last_error={last_error}"
+            ),
+        )
+
+    def on_symbol_recovered(self, symbol: str, context: str, failed_cycles: int) -> bool:
+        """Alert when a degraded symbol starts processing successfully again."""
+        return self.alert(
+            f"symbol_recovered:{symbol}",
+            f"Symbol recovered: {symbol} ({context}) after {failed_cycles} failed cycles",
+        )
+
     def on_heartbeat_missed(self, last_eval_utc: datetime | None) -> bool:
         """Alert when no signal evaluation occurred for >30 min during session."""
         if last_eval_utc is not None:
