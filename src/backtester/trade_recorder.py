@@ -35,6 +35,10 @@ class RecordedTrade:
     tp2_price: float | None = None
 
 
+def _entry_time(signal: Signal) -> datetime:
+    return signal.m1_bar_time_utc if signal.m1_bar_time_utc is not None else signal.created_at_utc
+
+
 def make_trade(
     signal: Signal,
     exit_price: float,
@@ -54,7 +58,7 @@ def make_trade(
         direction=signal.direction,
         scenario=signal.scenario.value,
         entry_price=signal.price,
-        entry_time_utc=signal.created_at_utc,
+        entry_time_utc=_entry_time(signal),
         exit_price=exit_price,
         exit_time_utc=exit_time_utc,
         pnl=pnl,
@@ -80,7 +84,7 @@ def time_based_outcome(
         direction=signal.direction,
         scenario=signal.scenario.value,
         entry_price=signal.price,
-        entry_time_utc=signal.created_at_utc,
+        entry_time_utc=_entry_time(signal),
         exit_price=future_close_price,
         exit_time_utc=future_time_utc,
         pnl=pnl,

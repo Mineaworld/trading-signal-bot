@@ -257,9 +257,11 @@ def _recompute_from_atr(
         else (risk_config.rr_targets[1] if risk_config else 3.0)
     )
 
-    # Slice M15 bars up to entry time (no lookahead)
+    # Slice to closed M15 bars only at entry time (no lookahead).
+    # m15_bars["time"] is bar open time, so a bar is closed at open+15m.
     m15_sorted = m15_bars.sort_values("time").reset_index(drop=True)
-    m15_before = m15_sorted[m15_sorted["time"] <= signal.m1_bar_time_utc]
+    m15_close_times = pd.to_datetime(m15_sorted["time"], utc=True) + timedelta(minutes=15)
+    m15_before = m15_sorted[m15_close_times <= signal.m1_bar_time_utc]
     if len(m15_before) < atr_period:
         return (None, None, None)
 
