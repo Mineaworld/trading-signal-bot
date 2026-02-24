@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -276,12 +277,12 @@ def _compute_streaks(trades: list[RecordedTrade]) -> tuple[int, int]:
 
 def _group_stats(
     trades: list[RecordedTrade],
-    key_fn: object,
+    key_fn: Callable[[RecordedTrade], str],
 ) -> dict[str, ScenarioStats]:
     """Group trades by key_fn and compute stats per group."""
     groups: dict[str, list[RecordedTrade]] = defaultdict(list)
     for t in trades:
-        groups[key_fn(t)].append(t)  # type: ignore[operator]
+        groups[key_fn(t)].append(t)
 
     result: dict[str, ScenarioStats] = {}
     for key, group in groups.items():

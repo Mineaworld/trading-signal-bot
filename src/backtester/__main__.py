@@ -143,7 +143,7 @@ def _run_v2(args: argparse.Namespace, app_config: object, m15_df: object, m1_df:
         exit_mode=exit_mode,
         hold_minutes=args.hold_minutes,
         sl_mult=args.sl_mult,
-        rr1=args.rr1 if args.rr1 is not None else 2.0,
+        rr1=args.rr1,
         rr2=args.rr2,
         output_dir=args.output_dir,
     )
