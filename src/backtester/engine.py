@@ -5,9 +5,13 @@ from datetime import timedelta
 
 import pandas as pd
 
-from trading_signal_bot.models import Signal
+from trading_signal_bot.models import IndicatorParams, Signal
+from trading_signal_bot.settings import RiskContextConfig
 from trading_signal_bot.strategy import StrategyEvaluator
 
+from .config import BacktestConfig
+from .exit_simulator import simulate_exit
+from .signal_scanner import scan_signals
 from .trade_recorder import RecordedTrade, time_based_outcome
 
 
@@ -15,6 +19,49 @@ from .trade_recorder import RecordedTrade, time_based_outcome
 class BacktestResult:
     signals: list[Signal]
     trades: list[RecordedTrade]
+    config: BacktestConfig | None = None
+
+
+def run_backtest(
+    strategy: StrategyEvaluator,
+    symbol: str,
+    m15_df: pd.DataFrame,
+    m1_df: pd.DataFrame,
+    config: BacktestConfig,
+    indicator_params: IndicatorParams,
+    risk_config: RiskContextConfig | None = None,
+) -> BacktestResult:
+    """V2 backtest engine: scan signals per mode, then simulate exits."""
+    if m15_df.empty or m1_df.empty:
+        return BacktestResult(signals=[], trades=[], config=config)
+
+    signals = scan_signals(
+        strategy=strategy,
+        symbol=symbol,
+        m15_df=m15_df,
+        m1_df=m1_df,
+        mode=config.mode,
+        params=indicator_params,
+    )
+
+    trades: list[RecordedTrade] = []
+    for signal in signals:
+        trade = simulate_exit(
+            signal=signal,
+            m1_bars=m1_df,
+            m15_bars=m15_df,
+            exit_mode=config.exit_mode,
+            indicator_params=indicator_params,
+            hold_minutes=config.hold_minutes,
+            risk_config=risk_config,
+            sl_mult_override=config.sl_mult,
+            rr1_override=config.rr1,
+            rr2_override=config.rr2,
+        )
+        if trade is not None:
+            trades.append(trade)
+
+    return BacktestResult(signals=signals, trades=trades, config=config)
 
 
 def run_time_based_backtest(
@@ -24,6 +71,7 @@ def run_time_based_backtest(
     m1_df: pd.DataFrame,
     hold_minutes: int = 15,
 ) -> BacktestResult:
+    """V1 backward-compat: legacy scan + time-based exit."""
     if m15_df.empty or m1_df.empty:
         return BacktestResult(signals=[], trades=[])
 
