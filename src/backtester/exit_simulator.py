@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import numpy as np
 import pandas as pd
@@ -104,7 +104,17 @@ def _simulate_sltp(
     future = m1_sorted[m1_sorted["time"] > signal.m1_bar_time_utc].reset_index(drop=True)
 
     if future.empty:
-        return None
+        # No bars after entry — data exhaustion at last available bar
+        last = m1_sorted.iloc[-1]
+        return make_trade(
+            signal=signal,
+            exit_price=float(last["close"]),
+            exit_time_utc=pd.to_datetime(last["time"], utc=True).to_pydatetime(),
+            exit_reason=ExitReason.DATA_END,
+            sl_price=sl_price,
+            tp1_price=tp1_price,
+            tp2_price=tp2_price,
+        )
 
     is_buy = signal.direction is Direction.BUY
 

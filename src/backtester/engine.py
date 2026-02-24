@@ -9,7 +9,7 @@ from trading_signal_bot.models import IndicatorParams, Signal
 from trading_signal_bot.settings import RiskContextConfig
 from trading_signal_bot.strategy import StrategyEvaluator
 
-from .config import BacktestConfig, ExitMode
+from .config import BacktestConfig
 from .exit_simulator import simulate_exit
 from .signal_scanner import scan_signals
 from .trade_recorder import RecordedTrade, time_based_outcome

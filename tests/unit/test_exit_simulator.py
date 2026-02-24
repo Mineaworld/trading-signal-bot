@@ -7,12 +7,11 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 import pytest
 
-from trading_signal_bot.models import Direction, IndicatorParams, Scenario, Signal
-from trading_signal_bot.settings import RiskContextConfig
-
 from backtester.config import ExitMode
 from backtester.exit_simulator import simulate_exit
 from backtester.trade_recorder import ExitReason
+from trading_signal_bot.models import Direction, IndicatorParams, Scenario, Signal
+from trading_signal_bot.settings import RiskContextConfig
 
 UTC = timezone.utc
 

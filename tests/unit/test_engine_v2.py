@@ -6,15 +6,12 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pandas as pd
-import pytest
-
-from trading_signal_bot.models import Direction, IndicatorParams, Scenario, Signal
-from trading_signal_bot.settings import RiskContextConfig
-from trading_signal_bot.strategy import StrategyEvaluator
 
 from backtester.config import BacktestConfig, ExitMode, SignalMode
 from backtester.engine import BacktestResult, run_backtest, run_time_based_backtest
-from backtester.trade_recorder import ExitReason
+from trading_signal_bot.models import Direction, IndicatorParams, Scenario, Signal
+from trading_signal_bot.settings import RiskContextConfig
+from trading_signal_bot.strategy import StrategyEvaluator
 
 UTC = timezone.utc
 

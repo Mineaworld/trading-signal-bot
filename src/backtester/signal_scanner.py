@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 
 import numpy as np
 import pandas as pd
@@ -166,7 +166,7 @@ def _scan_chain(
         # Advance each pending setup
         completed_keys: list[_PendingKey] = []
         for key, setup in list(pending.items()):
-            m15_slice_for_risk = m15_all.iloc[: m15_ptr].reset_index(drop=True) if m15_ptr > 0 else m15_all.iloc[:1].reset_index(drop=True)
+            m15_slice_for_risk = m15_all.iloc[: m15_ptr].reset_index(drop=True) if m15_ptr > 0 else pd.DataFrame()
             updated, signal = strategy.advance_pending_setup(
                 setup, snapshot, price=None, m15_df=m15_slice_for_risk,
             )
