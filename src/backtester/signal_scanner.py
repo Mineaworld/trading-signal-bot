@@ -126,11 +126,15 @@ def _scan_chain(
             trigger_directions = {trigger.direction for trigger in triggers}
             if Direction.BUY in trigger_directions:
                 pending = {
-                    key: value for key, value in pending.items() if value.direction is not Direction.SELL
+                    key: value
+                    for key, value in pending.items()
+                    if value.direction is not Direction.SELL
                 }
             if Direction.SELL in trigger_directions:
                 pending = {
-                    key: value for key, value in pending.items() if value.direction is not Direction.BUY
+                    key: value
+                    for key, value in pending.items()
+                    if value.direction is not Direction.BUY
                 }
             for trigger in triggers:
                 key: _PendingKey = (trigger.direction, trigger.mode)
