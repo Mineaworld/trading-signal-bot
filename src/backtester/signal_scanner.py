@@ -123,6 +123,15 @@ def _scan_chain(
             m15_slice = m15_all.iloc[: m15_ptr + 1].reset_index(drop=True)
 
             triggers = strategy.evaluate_m15_triggers(m15_slice, m15_close_dt)
+            trigger_directions = {trigger.direction for trigger in triggers}
+            if Direction.BUY in trigger_directions:
+                pending = {
+                    key: value for key, value in pending.items() if value.direction is not Direction.SELL
+                }
+            if Direction.SELL in trigger_directions:
+                pending = {
+                    key: value for key, value in pending.items() if value.direction is not Direction.BUY
+                }
             for trigger in triggers:
                 key: _PendingKey = (trigger.direction, trigger.mode)
                 # HP suppresses NORMAL for same direction
