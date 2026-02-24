@@ -343,6 +343,19 @@ class TestStochExit:
         assert trade is not None
         assert trade.exit_reason is ExitReason.DATA_END
 
+    def test_stoch_none_when_all_m15_before_entry(self) -> None:
+        """Returns None when all M15 bars close before entry time."""
+        # Entry at 14:00, but M15 data ends at 13:45 (close 14:00 is <=, not >)
+        sig = _make_signal(
+            direction=Direction.BUY,
+            price=100.0,
+            bar_time=datetime(2026, 2, 11, 15, 1, tzinfo=UTC),
+        )
+        # M15 bars from 10:00 to 14:45 — all close at or before 15:00 < 15:01
+        m15 = _make_m15(count=20, start="2026-02-11T10:00")
+        trade = simulate_exit(sig, pd.DataFrame(), m15, ExitMode.STOCH, PARAMS)
+        assert trade is None
+
 
 class TestCombinedExit:
     """COMBINED exit mode tests (SL/TP + stoch + max_hold interleaved)."""

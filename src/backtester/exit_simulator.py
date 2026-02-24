@@ -231,11 +231,15 @@ def _simulate_stoch(
     is_buy = signal.direction is Direction.BUY
     min_bars = indicator_params.stoch_k + indicator_params.stoch_slowing - 1
 
+    last_eligible_idx: int | None = None
+
     for idx in range(len(m15_sorted)):
         m15_close_dt = m15_close_times.iloc[idx].to_pydatetime()
         # Only check M15 bars that close AFTER entry
         if m15_close_dt <= signal.m1_bar_time_utc:
             continue
+
+        last_eligible_idx = idx
 
         m15_slice = m15_sorted.iloc[: idx + 1]
         if len(m15_slice) < min_bars:
@@ -271,12 +275,13 @@ def _simulate_stoch(
                 exit_reason=ExitReason.STOCH,
             )
 
-    # No stoch exit — DATA_END at last M15 close
-    last_idx = len(m15_sorted) - 1
-    last_close_dt = m15_close_times.iloc[last_idx].to_pydatetime()
+    # No stoch exit — DATA_END at last eligible M15 close after entry
+    if last_eligible_idx is None:
+        return None
+    last_close_dt = m15_close_times.iloc[last_eligible_idx].to_pydatetime()
     return make_trade(
         signal=signal,
-        exit_price=float(m15_sorted.iloc[last_idx]["close"]),
+        exit_price=float(m15_sorted.iloc[last_eligible_idx]["close"]),
         exit_time_utc=last_close_dt,
         exit_reason=ExitReason.DATA_END,
     )
