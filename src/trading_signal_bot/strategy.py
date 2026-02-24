@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -72,6 +73,7 @@ class StrategyEvaluator:
         self._require_opposite_zone_on_lwma_cross = require_opposite_zone_on_lwma_cross
         self._regime_filter = regime_filter
         self._risk_context = risk_context
+        self._logger = logging.getLogger(self.__class__.__name__)
 
     def m15_requires_m1(
         self,
@@ -96,6 +98,10 @@ class StrategyEvaluator:
         m15_fast = float(context.lwma_fast.iloc[idx])
         m15_slow = float(context.lwma_slow.iloc[idx])
         if np.isnan([m15_k, m15_d, m15_fast, m15_slow]).any():
+            self._logger.debug(
+                "M15 indicators contain NaN at %s, skipping triggers",
+                m15_close_time_utc,
+            )
             return []
 
         m15_lwma_cross_above, m15_lwma_cross_below = _cross_at(
@@ -209,6 +215,7 @@ class StrategyEvaluator:
         m15_fast = float(context.lwma_fast.iloc[idx])
         m15_slow = float(context.lwma_slow.iloc[idx])
         if np.isnan([m15_k, m15_d, m15_fast, m15_slow]).any():
+            self._logger.debug("M15 indicators contain NaN for %s, skipping evaluate_all", symbol)
             return []
 
         buy_pre = (
@@ -224,6 +231,7 @@ class StrategyEvaluator:
         if not buy_pre and not sell_pre:
             return []
         if not self._passes_regime_filter(m15_df):
+            self._logger.debug("regime filter blocked %s in evaluate_all", symbol)
             return []
 
         m1_ctx = self._build_m1_context(m1_df)
@@ -237,6 +245,12 @@ class StrategyEvaluator:
             m15_close_time_utc,
         )
         if not candidate_positions:
+            self._logger.debug(
+                "no M1 candidates for %s in window [%s, %s]",
+                symbol,
+                m15_prev_close,
+                m15_close_time_utc,
+            )
             return []
         close_times = pd.to_datetime(m1_ctx.df["time"], utc=True) + timedelta(minutes=1)
         signals: list[Signal] = []
@@ -417,6 +431,7 @@ class StrategyEvaluator:
         m1_k = float(m1_ctx.stoch_k.iloc[idx])
         m1_d = float(m1_ctx.stoch_d.iloc[idx])
         if np.isnan([m1_fast, m1_slow, m1_k, m1_d]).any():
+            self._logger.debug("M1 indicators contain NaN for %s, skipping m1_only", symbol)
             return None
 
         crossed_above, crossed_below = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, idx)
@@ -472,6 +487,7 @@ class StrategyEvaluator:
         m1_k = float(m1_ctx.stoch_k.iloc[idx])
         m1_d = float(m1_ctx.stoch_d.iloc[idx])
         if np.isnan([m1_fast, m1_slow, m1_k, m1_d]).any():
+            self._logger.debug("M1 snapshot contains NaN, skipping latest_m1_snapshot")
             return None
 
         lwma_cross_above, lwma_cross_below = _cross_at(m1_ctx.lwma_fast, m1_ctx.lwma_slow, idx)
@@ -795,11 +811,20 @@ class StrategyEvaluator:
             period=self._regime_filter.adx_period,
         )
         if adx.empty:
+            self._logger.debug("ADX empty, regime filter rejecting")
             return False
         adx_value = float(adx.iloc[-1])
         if np.isnan(adx_value):
+            self._logger.debug("ADX NaN, regime filter rejecting")
             return False
-        return adx_value >= self._regime_filter.min_adx
+        if adx_value < self._regime_filter.min_adx:
+            self._logger.debug(
+                "regime filter blocked: ADX=%.2f < min_adx=%.1f",
+                adx_value,
+                self._regime_filter.min_adx,
+            )
+            return False
+        return True
 
     def _build_risk_context(
         self,
