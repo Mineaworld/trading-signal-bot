@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
-import pytest
 
 from backtester.config import ExitMode
 from backtester.exit_simulator import simulate_exit
@@ -85,6 +84,22 @@ def _make_m15(count: int = 20, start: str = "2026-02-11T10:00") -> pd.DataFrame:
             "high": [101.0] * count,
             "low": [99.0] * count,
             "close": [100.0] * count,
+            "tick_volume": [100] * count,
+        }
+    )
+
+
+def _make_m15_with_closes(closes: list[float], start: str = "2026-02-11T10:00") -> pd.DataFrame:
+    """Create M15 bars with custom close prices for stoch tests."""
+    count = len(closes)
+    times = pd.date_range(start=start, periods=count, freq="15min", tz="UTC")
+    return pd.DataFrame(
+        {
+            "time": times,
+            "open": closes,
+            "high": [c + 1.0 for c in closes],
+            "low": [c - 1.0 for c in closes],
+            "close": closes,
             "tick_volume": [100] * count,
         }
     )
@@ -293,19 +308,112 @@ class TestNoRiskLevels:
         assert trade is None
 
 
-class TestNotImplementedModes:
-    """STOCH and COMBINED should raise NotImplementedError."""
+class TestStochExit:
+    """STOCH exit mode tests."""
 
-    def test_stoch_not_implemented(self) -> None:
-        sig = _make_signal()
-        m1 = _make_m1([(100, 101, 99, 100)] * 5, start=sig.m1_bar_time_utc)
-        m15 = _make_m15()
-        with pytest.raises(NotImplementedError, match="v2b"):
-            simulate_exit(sig, m1, m15, ExitMode.STOCH, PARAMS)
+    def test_buy_exits_when_k_enters_sell_zone(self) -> None:
+        """BUY exits when M15 stoch K enters sell zone (80-100)."""
+        sig = _make_signal(direction=Direction.BUY, price=100.0)
+        # Monotonically increasing closes → K=100 at every valid bar → sell zone
+        closes = [100 + 0.5 * i for i in range(20)]
+        m15 = _make_m15_with_closes(closes)
+        trade = simulate_exit(sig, pd.DataFrame(), m15, ExitMode.STOCH, PARAMS)
+        assert trade is not None
+        assert trade.exit_reason is ExitReason.STOCH
+        # First eligible M15 bar after entry (index 16, close_time=14:15)
+        assert trade.exit_price == closes[16]
 
-    def test_combined_not_implemented(self) -> None:
-        sig = _make_signal()
-        m1 = _make_m1([(100, 101, 99, 100)] * 5, start=sig.m1_bar_time_utc)
-        m15 = _make_m15()
-        with pytest.raises(NotImplementedError, match="v2b"):
-            simulate_exit(sig, m1, m15, ExitMode.COMBINED, PARAMS)
+    def test_sell_exits_when_k_enters_buy_zone(self) -> None:
+        """SELL exits when M15 stoch K enters buy zone (0-20)."""
+        sig = _make_signal(direction=Direction.SELL, price=120.0)
+        # Monotonically decreasing closes → K=0 at every valid bar → buy zone
+        closes = [120 - 0.5 * i for i in range(20)]
+        m15 = _make_m15_with_closes(closes)
+        trade = simulate_exit(sig, pd.DataFrame(), m15, ExitMode.STOCH, PARAMS)
+        assert trade is not None
+        assert trade.exit_reason is ExitReason.STOCH
+        assert trade.exit_price == closes[16]
+
+    def test_stoch_data_end_when_no_zone_hit(self) -> None:
+        """DATA_END when stoch K never enters opposite zone."""
+        sig = _make_signal(direction=Direction.BUY, price=100.0)
+        # Constant closes → K=NaN (0/0 denominator) → never enters any zone
+        m15 = _make_m15(count=20)
+        trade = simulate_exit(sig, pd.DataFrame(), m15, ExitMode.STOCH, PARAMS)
+        assert trade is not None
+        assert trade.exit_reason is ExitReason.DATA_END
+
+
+class TestCombinedExit:
+    """COMBINED exit mode tests (SL/TP + stoch + max_hold interleaved)."""
+
+    def test_sl_triggers_before_stoch(self) -> None:
+        """SL hit on M1 bar before any M15 stoch boundary."""
+        sig = _make_signal(direction=Direction.BUY, price=100.0, sl=99.0, tp1=110.0, tp2=115.0)
+        entry_time = sig.m1_bar_time_utc
+        m1 = _make_m1(
+            [
+                (100, 101, 99.5, 100),  # entry bar
+                (100, 100.5, 98, 99),  # bar 1: low=98 <= SL=99 → SL
+            ],
+            start=entry_time,
+        )
+        m15 = _make_m15(count=20)
+        trade = simulate_exit(sig, m1, m15, ExitMode.COMBINED, PARAMS, hold_minutes=480)
+        assert trade is not None
+        assert trade.exit_reason is ExitReason.SL
+        assert trade.exit_price == 99.0
+
+    def test_stoch_triggers_before_max_hold(self) -> None:
+        """Stoch exit triggers before max_hold deadline with wide SL/TP."""
+        sig = _make_signal(direction=Direction.BUY, price=100.0, sl=80.0, tp1=130.0, tp2=150.0)
+        entry_time = sig.m1_bar_time_utc
+        # 20 stable M1 bars — no SL/TP hit
+        m1 = _make_m1([(100, 101, 99, 100)] * 20, start=entry_time)
+        # Increasing M15 closes → K=100 → sell zone at first boundary
+        closes = [100 + 0.5 * i for i in range(20)]
+        m15 = _make_m15_with_closes(closes)
+        trade = simulate_exit(sig, m1, m15, ExitMode.COMBINED, PARAMS, hold_minutes=480)
+        assert trade is not None
+        assert trade.exit_reason is ExitReason.STOCH
+
+    def test_max_hold_reached(self) -> None:
+        """MAX_HOLD triggers when SL/TP never hit and stoch stays flat."""
+        sig = _make_signal(direction=Direction.BUY, price=100.0, sl=80.0, tp1=130.0, tp2=150.0)
+        entry_time = sig.m1_bar_time_utc
+        # 10 stable M1 bars — no SL/TP hit
+        m1 = _make_m1([(100, 101, 99, 100)] * 10, start=entry_time)
+        # Constant M15 closes → K=NaN → no stoch exit
+        m15 = _make_m15(count=20)
+        trade = simulate_exit(sig, m1, m15, ExitMode.COMBINED, PARAMS, hold_minutes=5)
+        assert trade is not None
+        assert trade.exit_reason is ExitReason.MAX_HOLD
+
+    def test_combined_data_end(self) -> None:
+        """DATA_END when data exhausted before any exit triggers."""
+        sig = _make_signal(direction=Direction.BUY, price=100.0, sl=80.0, tp1=130.0, tp2=150.0)
+        entry_time = sig.m1_bar_time_utc
+        # 3 M1 bars — not enough to reach max_hold or M15 boundary
+        m1 = _make_m1([(100, 101, 99, 100)] * 3, start=entry_time)
+        # Constant M15 → no stoch exit
+        m15 = _make_m15(count=20)
+        trade = simulate_exit(sig, m1, m15, ExitMode.COMBINED, PARAMS, hold_minutes=480)
+        assert trade is not None
+        assert trade.exit_reason is ExitReason.DATA_END
+
+    def test_combined_sell_sl_triggers(self) -> None:
+        """SELL direction: SL hit on M1 high in combined mode."""
+        sig = _make_signal(direction=Direction.SELL, price=100.0, sl=102.0, tp1=90.0, tp2=85.0)
+        entry_time = sig.m1_bar_time_utc
+        m1 = _make_m1(
+            [
+                (100, 101, 99, 100),  # entry bar
+                (100, 103, 99, 101),  # bar 1: high=103 >= SL=102 → SL
+            ],
+            start=entry_time,
+        )
+        m15 = _make_m15(count=20)
+        trade = simulate_exit(sig, m1, m15, ExitMode.COMBINED, PARAMS, hold_minutes=480)
+        assert trade is not None
+        assert trade.exit_reason is ExitReason.SL
+        assert trade.exit_price == 102.0

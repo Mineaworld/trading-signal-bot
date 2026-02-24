@@ -7,6 +7,7 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 
+from trading_signal_bot.indicators.stochastic import calculate_stochastic, stoch_in_zone
 from trading_signal_bot.indicators.volatility import calculate_atr
 from trading_signal_bot.models import Direction, IndicatorParams, Signal
 from trading_signal_bot.settings import RiskContextConfig
@@ -32,13 +33,33 @@ def simulate_exit(
     Returns RecordedTrade always (DATA_END if data exhausted).
     Returns None only for invalid input (e.g. SLTP mode but no risk levels).
     """
-    if exit_mode is ExitMode.STOCH:
-        raise NotImplementedError("STOCH exit mode available in v2b")
-    if exit_mode is ExitMode.COMBINED:
-        raise NotImplementedError("COMBINED exit mode available in v2b")
-
     if exit_mode is ExitMode.TIME:
         return _simulate_time(signal, m1_bars, hold_minutes)
+
+    if exit_mode is ExitMode.STOCH:
+        return _simulate_stoch(signal, m15_bars, indicator_params)
+
+    if exit_mode is ExitMode.COMBINED:
+        sl_price, tp1_price, tp2_price = _resolve_risk_levels(
+            signal,
+            m15_bars,
+            risk_config,
+            sl_mult_override,
+            rr1_override,
+            rr2_override,
+        )
+        if sl_price is None or tp1_price is None:
+            return None
+        return _simulate_combined(
+            signal,
+            m1_bars,
+            m15_bars,
+            indicator_params,
+            hold_minutes,
+            sl_price,
+            tp1_price,
+            tp2_price,
+        )
 
     # SLTP mode
     return _simulate_sltp(
@@ -180,6 +201,240 @@ def _simulate_sltp(
                 )
 
     # No SL/TP hit — exit at last bar close
+    last = future.iloc[-1]
+    return make_trade(
+        signal=signal,
+        exit_price=float(last["close"]),
+        exit_time_utc=pd.to_datetime(last["time"], utc=True).to_pydatetime(),
+        exit_reason=ExitReason.DATA_END,
+        sl_price=sl_price,
+        tp1_price=tp1_price,
+        tp2_price=tp2_price,
+    )
+
+
+def _simulate_stoch(
+    signal: Signal,
+    m15_bars: pd.DataFrame,
+    indicator_params: IndicatorParams,
+) -> RecordedTrade | None:
+    """Walk M15 closes after entry, exit when stoch enters opposite zone.
+
+    Exit price = M15 bar close price where opposite zone detected.
+    """
+    if m15_bars.empty:
+        return None
+
+    m15_sorted = m15_bars.sort_values("time").reset_index(drop=True)
+    m15_close_times = pd.to_datetime(m15_sorted["time"], utc=True) + timedelta(minutes=15)
+
+    is_buy = signal.direction is Direction.BUY
+    min_bars = indicator_params.stoch_k + indicator_params.stoch_slowing - 1
+
+    for idx in range(len(m15_sorted)):
+        m15_close_dt = m15_close_times.iloc[idx].to_pydatetime()
+        # Only check M15 bars that close AFTER entry
+        if m15_close_dt <= signal.m1_bar_time_utc:
+            continue
+
+        m15_slice = m15_sorted.iloc[: idx + 1]
+        if len(m15_slice) < min_bars:
+            continue
+
+        close = m15_slice["close"].astype(float)
+        stoch_k, _ = calculate_stochastic(
+            close=close,
+            k_period=indicator_params.stoch_k,
+            d_period=indicator_params.stoch_d,
+            slowing=indicator_params.stoch_slowing,
+        )
+        k_val = float(stoch_k.iloc[-1])
+        if np.isnan(k_val):
+            continue
+
+        # BUY trade exits when K enters sell zone (opposite)
+        # SELL trade exits when K enters buy zone (opposite)
+        if is_buy and stoch_in_zone(k_val, indicator_params.sell_zone):
+            exit_price = float(m15_sorted.iloc[idx]["close"])
+            return make_trade(
+                signal=signal,
+                exit_price=exit_price,
+                exit_time_utc=m15_close_dt,
+                exit_reason=ExitReason.STOCH,
+            )
+        if not is_buy and stoch_in_zone(k_val, indicator_params.buy_zone):
+            exit_price = float(m15_sorted.iloc[idx]["close"])
+            return make_trade(
+                signal=signal,
+                exit_price=exit_price,
+                exit_time_utc=m15_close_dt,
+                exit_reason=ExitReason.STOCH,
+            )
+
+    # No stoch exit — DATA_END at last M15 close
+    last_idx = len(m15_sorted) - 1
+    last_close_dt = m15_close_times.iloc[last_idx].to_pydatetime()
+    return make_trade(
+        signal=signal,
+        exit_price=float(m15_sorted.iloc[last_idx]["close"]),
+        exit_time_utc=last_close_dt,
+        exit_reason=ExitReason.DATA_END,
+    )
+
+
+def _simulate_combined(
+    signal: Signal,
+    m1_bars: pd.DataFrame,
+    m15_bars: pd.DataFrame,
+    indicator_params: IndicatorParams,
+    hold_minutes: int,
+    sl_price: float,
+    tp1_price: float,
+    tp2_price: float | None,
+) -> RecordedTrade | None:
+    """Interleave SL/TP + stoch + max_hold.
+
+    Priority per M1 bar: SL/TP > stoch (at M15 boundary) > max_hold.
+    """
+    m1_sorted = m1_bars.sort_values("time").reset_index(drop=True)
+    m15_sorted = m15_bars.sort_values("time").reset_index(drop=True)
+
+    future = m1_sorted[m1_sorted["time"] > signal.m1_bar_time_utc].reset_index(drop=True)
+    if future.empty:
+        last = m1_sorted.iloc[-1]
+        return make_trade(
+            signal=signal,
+            exit_price=float(last["close"]),
+            exit_time_utc=pd.to_datetime(last["time"], utc=True).to_pydatetime(),
+            exit_reason=ExitReason.DATA_END,
+            sl_price=sl_price,
+            tp1_price=tp1_price,
+            tp2_price=tp2_price,
+        )
+
+    is_buy = signal.direction is Direction.BUY
+    max_hold_deadline = signal.m1_bar_time_utc + timedelta(minutes=hold_minutes)
+
+    # Pre-compute M15 close times after entry
+    m15_close_times = pd.to_datetime(m15_sorted["time"], utc=True) + timedelta(minutes=15)
+    m15_after_entry = [
+        (idx, m15_close_times.iloc[idx].to_pydatetime())
+        for idx in range(len(m15_sorted))
+        if m15_close_times.iloc[idx].to_pydatetime() > signal.m1_bar_time_utc
+    ]
+    m15_boundary_ptr = 0
+    min_bars_stoch = indicator_params.stoch_k + indicator_params.stoch_slowing - 1
+
+    for i in range(len(future)):
+        bar = future.iloc[i]
+        bar_low = float(bar["low"])
+        bar_high = float(bar["high"])
+        bar_time = pd.to_datetime(bar["time"], utc=True).to_pydatetime()
+        m1_close_time = bar_time + timedelta(minutes=1)
+
+        # Priority 1: SL/TP
+        if is_buy:
+            if bar_low <= sl_price:
+                return make_trade(
+                    signal=signal,
+                    exit_price=sl_price,
+                    exit_time_utc=bar_time,
+                    exit_reason=ExitReason.SL,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
+                )
+            if bar_high >= tp1_price:
+                return make_trade(
+                    signal=signal,
+                    exit_price=tp1_price,
+                    exit_time_utc=bar_time,
+                    exit_reason=ExitReason.TP1,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
+                )
+        else:
+            if bar_high >= sl_price:
+                return make_trade(
+                    signal=signal,
+                    exit_price=sl_price,
+                    exit_time_utc=bar_time,
+                    exit_reason=ExitReason.SL,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
+                )
+            if bar_low <= tp1_price:
+                return make_trade(
+                    signal=signal,
+                    exit_price=tp1_price,
+                    exit_time_utc=bar_time,
+                    exit_reason=ExitReason.TP1,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
+                )
+
+        # Priority 2: Stoch check at M15 boundaries
+        while (
+            m15_boundary_ptr < len(m15_after_entry)
+            and m1_close_time >= m15_after_entry[m15_boundary_ptr][1]
+        ):
+            m15_idx, m15_close_dt = m15_after_entry[m15_boundary_ptr]
+            m15_boundary_ptr += 1
+
+            m15_slice = m15_sorted.iloc[: m15_idx + 1]
+            if len(m15_slice) < min_bars_stoch:
+                continue
+
+            close = m15_slice["close"].astype(float)
+            stoch_k, _ = calculate_stochastic(
+                close=close,
+                k_period=indicator_params.stoch_k,
+                d_period=indicator_params.stoch_d,
+                slowing=indicator_params.stoch_slowing,
+            )
+            k_val = float(stoch_k.iloc[-1])
+            if np.isnan(k_val):
+                continue
+
+            if is_buy and stoch_in_zone(k_val, indicator_params.sell_zone):
+                exit_price = float(m15_sorted.iloc[m15_idx]["close"])
+                return make_trade(
+                    signal=signal,
+                    exit_price=exit_price,
+                    exit_time_utc=m15_close_dt,
+                    exit_reason=ExitReason.STOCH,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
+                )
+            if not is_buy and stoch_in_zone(k_val, indicator_params.buy_zone):
+                exit_price = float(m15_sorted.iloc[m15_idx]["close"])
+                return make_trade(
+                    signal=signal,
+                    exit_price=exit_price,
+                    exit_time_utc=m15_close_dt,
+                    exit_reason=ExitReason.STOCH,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
+                )
+
+        # Priority 3: Max hold
+        if m1_close_time >= max_hold_deadline:
+            return make_trade(
+                signal=signal,
+                exit_price=float(bar["close"]),
+                exit_time_utc=m1_close_time,
+                exit_reason=ExitReason.MAX_HOLD,
+                sl_price=sl_price,
+                tp1_price=tp1_price,
+                tp2_price=tp2_price,
+            )
+
+    # Data exhausted
     last = future.iloc[-1]
     return make_trade(
         signal=signal,

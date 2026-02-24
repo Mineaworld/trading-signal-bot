@@ -14,7 +14,7 @@ from trading_signal_bot.strategy import StrategyEvaluator
 from .config import BacktestConfig, ExitMode, SignalMode
 from .data_loader import BacktestRange, load_historical
 from .engine import run_backtest, run_time_based_backtest
-from .report import summarize
+from .report import build_report, export_equity_curve, export_trade_log, format_report, summarize
 
 
 def main() -> None:
@@ -123,19 +123,14 @@ def _run_v2(args: argparse.Namespace, app_config: object, m15_df: object, m1_df:
     signal_mode = SignalMode(args.mode) if args.mode else SignalMode.LEGACY
     exit_mode = ExitMode(args.exit_mode) if args.exit_mode else ExitMode.TIME
 
-    # Validate exit mode
-    if exit_mode in (ExitMode.STOCH, ExitMode.COMBINED):
-        print(
-            f"[backtest] error: --exit-mode {exit_mode.value} not yet implemented (coming in v2b)"
-        )
-        sys.exit(1)
-
     risk_config = app_config.risk_context  # type: ignore[attr-defined]
 
-    if exit_mode is ExitMode.SLTP:
+    # Validate exit mode requirements
+    if exit_mode in (ExitMode.SLTP, ExitMode.COMBINED):
         if not risk_config.enabled and args.sl_mult is None:
             print(
-                "[backtest] error: --exit-mode sltp requires risk_context.enabled=True or --sl-mult"
+                f"[backtest] error: --exit-mode {exit_mode.value} requires "
+                "risk_context.enabled=True or --sl-mult"
             )
             sys.exit(1)
 
@@ -173,7 +168,15 @@ def _run_v2(args: argparse.Namespace, app_config: object, m15_df: object, m1_df:
     print(f"Mode: {signal_mode.value} | Exit: {exit_mode.value}")
     print(f"Signals detected: {len(result.signals)}")
     print(f"Trades evaluated: {len(result.trades)}")
-    print(summarize(result.trades))
+
+    report = build_report(result.trades)
+    print(format_report(report, bt_config))
+
+    if bt_config.output_dir and result.trades:
+        out = bt_config.output_dir
+        export_equity_curve(result.trades, out / "equity_curve.csv")
+        export_trade_log(result.trades, out / "trade_log.csv")
+        print(f"CSV exports written to {out}")
 
 
 def _parse_start_bound(value: str) -> datetime:
