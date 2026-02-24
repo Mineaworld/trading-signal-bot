@@ -157,8 +157,14 @@ def _scan_chain(
 
         # Build M1Snapshot from pre-computed indicators
         snapshot = _build_snapshot_at(
-            m1_idx, m1_bar_close, m1_all, m1_lwma_fast, m1_lwma_slow,
-            m1_stoch_k, m1_stoch_d, params,
+            m1_idx,
+            m1_bar_close,
+            m1_all,
+            m1_lwma_fast,
+            m1_lwma_slow,
+            m1_stoch_k,
+            m1_stoch_d,
+            params,
         )
         if snapshot is None:
             continue
@@ -166,9 +172,14 @@ def _scan_chain(
         # Advance each pending setup
         completed_keys: list[_PendingKey] = []
         for key, setup in list(pending.items()):
-            m15_slice_for_risk = m15_all.iloc[: m15_ptr].reset_index(drop=True) if m15_ptr > 0 else pd.DataFrame()
+            m15_slice_for_risk = (
+                m15_all.iloc[:m15_ptr].reset_index(drop=True) if m15_ptr > 0 else pd.DataFrame()
+            )
             updated, signal = strategy.advance_pending_setup(
-                setup, snapshot, price=None, m15_df=m15_slice_for_risk,
+                setup,
+                snapshot,
+                price=None,
+                m15_df=m15_slice_for_risk,
             )
             if signal is not None:
                 signals.append(signal)

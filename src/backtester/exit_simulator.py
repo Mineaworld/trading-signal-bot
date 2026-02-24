@@ -42,8 +42,13 @@ def simulate_exit(
 
     # SLTP mode
     return _simulate_sltp(
-        signal, m1_bars, m15_bars, risk_config,
-        sl_mult_override, rr1_override, rr2_override,
+        signal,
+        m1_bars,
+        m15_bars,
+        risk_config,
+        sl_mult_override,
+        rr1_override,
+        rr2_override,
     )
 
 
@@ -94,7 +99,12 @@ def _simulate_sltp(
 ) -> RecordedTrade | None:
     """Walk M1 bars after entry, check SL/TP1 (SL checked first for same-bar ambiguity)."""
     sl_price, tp1_price, tp2_price = _resolve_risk_levels(
-        signal, m15_bars, risk_config, sl_mult_override, rr1_override, rr2_override,
+        signal,
+        m15_bars,
+        risk_config,
+        sl_mult_override,
+        rr1_override,
+        rr2_override,
     )
     if sl_price is None or tp1_price is None:
         return None
@@ -128,29 +138,45 @@ def _simulate_sltp(
             # SL checked first (conservative)
             if bar_low <= sl_price:
                 return make_trade(
-                    signal=signal, exit_price=sl_price, exit_time_utc=bar_time,
-                    exit_reason=ExitReason.SL, sl_price=sl_price,
-                    tp1_price=tp1_price, tp2_price=tp2_price,
+                    signal=signal,
+                    exit_price=sl_price,
+                    exit_time_utc=bar_time,
+                    exit_reason=ExitReason.SL,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
                 )
             if bar_high >= tp1_price:
                 return make_trade(
-                    signal=signal, exit_price=tp1_price, exit_time_utc=bar_time,
-                    exit_reason=ExitReason.TP1, sl_price=sl_price,
-                    tp1_price=tp1_price, tp2_price=tp2_price,
+                    signal=signal,
+                    exit_price=tp1_price,
+                    exit_time_utc=bar_time,
+                    exit_reason=ExitReason.TP1,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
                 )
         else:
             # SELL: SL on high, TP on low
             if bar_high >= sl_price:
                 return make_trade(
-                    signal=signal, exit_price=sl_price, exit_time_utc=bar_time,
-                    exit_reason=ExitReason.SL, sl_price=sl_price,
-                    tp1_price=tp1_price, tp2_price=tp2_price,
+                    signal=signal,
+                    exit_price=sl_price,
+                    exit_time_utc=bar_time,
+                    exit_reason=ExitReason.SL,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
                 )
             if bar_low <= tp1_price:
                 return make_trade(
-                    signal=signal, exit_price=tp1_price, exit_time_utc=bar_time,
-                    exit_reason=ExitReason.TP1, sl_price=sl_price,
-                    tp1_price=tp1_price, tp2_price=tp2_price,
+                    signal=signal,
+                    exit_price=tp1_price,
+                    exit_time_utc=bar_time,
+                    exit_reason=ExitReason.TP1,
+                    sl_price=sl_price,
+                    tp1_price=tp1_price,
+                    tp2_price=tp2_price,
                 )
 
     # No SL/TP hit — exit at last bar close
@@ -182,8 +208,12 @@ def _resolve_risk_levels(
     if sl_mult_override is not None or rr1_override is not None or rr2_override is not None:
         # Recompute from ATR at entry time
         return _recompute_from_atr(
-            signal, m15_bars, risk_config,
-            sl_mult_override, rr1_override, rr2_override,
+            signal,
+            m15_bars,
+            risk_config,
+            sl_mult_override,
+            rr1_override,
+            rr2_override,
         )
 
     # Use signal's built-in levels
@@ -211,14 +241,20 @@ def _recompute_from_atr(
 ) -> tuple[float | None, float | None, float | None]:
     """Recompute SL/TP from ATR at entry time (no lookahead)."""
     atr_period = risk_config.atr_period if risk_config else 14
-    sl_mult = sl_mult_override if sl_mult_override is not None else (
-        risk_config.atr_stop_multiplier if risk_config else 1.0
+    sl_mult = (
+        sl_mult_override
+        if sl_mult_override is not None
+        else (risk_config.atr_stop_multiplier if risk_config else 1.0)
     )
-    rr1 = rr1_override if rr1_override is not None else (
-        risk_config.rr_targets[0] if risk_config else 2.0
+    rr1 = (
+        rr1_override
+        if rr1_override is not None
+        else (risk_config.rr_targets[0] if risk_config else 2.0)
     )
-    rr2 = rr2_override if rr2_override is not None else (
-        risk_config.rr_targets[1] if risk_config else 3.0
+    rr2 = (
+        rr2_override
+        if rr2_override is not None
+        else (risk_config.rr_targets[1] if risk_config else 3.0)
     )
 
     # Slice M15 bars up to entry time (no lookahead)

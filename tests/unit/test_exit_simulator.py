@@ -99,9 +99,9 @@ class TestSLTPBuy:
         entry_time = sig.m1_bar_time_utc
         m1 = _make_m1(
             [
-                (100, 101, 99.5, 100),   # entry bar (idx 0, at entry_time)
+                (100, 101, 99.5, 100),  # entry bar (idx 0, at entry_time)
                 (100, 100.5, 99, 100.2),  # bar 1: low=99 > 98 -> no hit
-                (100, 100.5, 97.5, 99),   # bar 2: low=97.5 <= 98 -> SL hit
+                (100, 100.5, 97.5, 99),  # bar 2: low=97.5 <= 98 -> SL hit
             ],
             start=entry_time,
         )
@@ -117,9 +117,9 @@ class TestSLTPBuy:
         entry_time = sig.m1_bar_time_utc
         m1 = _make_m1(
             [
-                (100, 101, 99.5, 100),    # entry bar
-                (100, 103, 99, 100.2),    # bar 1: high=103 < 104
-                (100, 105, 99, 104.5),    # bar 2: high=105 >= 104 -> TP1
+                (100, 101, 99.5, 100),  # entry bar
+                (100, 103, 99, 100.2),  # bar 1: high=103 < 104
+                (100, 105, 99, 104.5),  # bar 2: high=105 >= 104 -> TP1
             ],
             start=entry_time,
         )
@@ -139,9 +139,9 @@ class TestSLTPSell:
         entry_time = sig.m1_bar_time_utc
         m1 = _make_m1(
             [
-                (100, 101, 99, 100),      # entry bar
+                (100, 101, 99, 100),  # entry bar
                 (100, 101.5, 99, 100.2),  # bar 1: high=101.5 < 102
-                (100, 103, 99, 101),      # bar 2: high=103 >= 102 -> SL
+                (100, 103, 99, 101),  # bar 2: high=103 >= 102 -> SL
             ],
             start=entry_time,
         )
@@ -157,9 +157,9 @@ class TestSLTPSell:
         entry_time = sig.m1_bar_time_utc
         m1 = _make_m1(
             [
-                (100, 101, 99, 100),      # entry bar
-                (100, 101, 97, 98),       # bar 1: low=97 > 96
-                (100, 101, 95, 97),       # bar 2: low=95 <= 96 -> TP1
+                (100, 101, 99, 100),  # entry bar
+                (100, 101, 97, 98),  # bar 1: low=97 > 96
+                (100, 101, 95, 97),  # bar 2: low=95 <= 96 -> TP1
             ],
             start=entry_time,
         )
@@ -178,8 +178,8 @@ class TestSameBarAmbiguity:
         entry_time = sig.m1_bar_time_utc
         m1 = _make_m1(
             [
-                (100, 101, 99, 100),      # entry bar
-                (100, 105, 97, 100),      # bar 1: low=97<=98 AND high=105>=104 -> SL wins
+                (100, 101, 99, 100),  # entry bar
+                (100, 105, 97, 100),  # bar 1: low=97<=98 AND high=105>=104 -> SL wins
             ],
             start=entry_time,
         )
@@ -197,9 +197,9 @@ class TestDataEnd:
         entry_time = sig.m1_bar_time_utc
         m1 = _make_m1(
             [
-                (100, 101, 99, 100),      # entry bar
-                (100, 101, 99, 100.5),    # bar 1: no hit
-                (100, 101, 99, 100.3),    # bar 2: no hit
+                (100, 101, 99, 100),  # entry bar
+                (100, 101, 99, 100.5),  # bar 1: no hit
+                (100, 101, 99, 100.3),  # bar 2: no hit
             ],
             start=entry_time,
         )
@@ -219,7 +219,7 @@ class TestEntryBarExcluded:
         entry_time = sig.m1_bar_time_utc
         m1 = _make_m1(
             [
-                (100, 101, 99, 100),      # entry bar: low=99 < 99.8, but excluded
+                (100, 101, 99, 100),  # entry bar: low=99 < 99.8, but excluded
                 (100, 101, 99.9, 100.5),  # bar 1: low=99.9 > 99.8 -> no hit
             ],
             start=entry_time,
@@ -241,7 +241,12 @@ class TestTimeExit:
         m1 = _make_m1(bars, start=entry_time)
         m15 = _make_m15()
         trade = simulate_exit(
-            sig, m1, m15, ExitMode.TIME, PARAMS, hold_minutes=15,
+            sig,
+            m1,
+            m15,
+            ExitMode.TIME,
+            PARAMS,
+            hold_minutes=15,
         )
         assert trade is not None
         assert trade.exit_reason is ExitReason.TIME
@@ -254,7 +259,12 @@ class TestTimeExit:
         m1 = _make_m1(bars, start=entry_time)
         m15 = _make_m15()
         trade = simulate_exit(
-            sig, m1, m15, ExitMode.TIME, PARAMS, hold_minutes=60,
+            sig,
+            m1,
+            m15,
+            ExitMode.TIME,
+            PARAMS,
+            hold_minutes=60,
         )
         assert trade is not None
         assert trade.exit_reason is ExitReason.DATA_END
@@ -273,7 +283,11 @@ class TestNoRiskLevels:
         m15 = _make_m15()
         # No risk config, no signal levels, no overrides
         trade = simulate_exit(
-            sig, m1, m15, ExitMode.SLTP, PARAMS,
+            sig,
+            m1,
+            m15,
+            ExitMode.SLTP,
+            PARAMS,
             risk_config=None,
         )
         assert trade is None

@@ -43,8 +43,12 @@ def main() -> None:
         help="Exit simulation mode (default: time)",
     )
     parser.add_argument("--sl-mult", type=float, default=None, help="Override ATR stop multiplier")
-    parser.add_argument("--rr1", type=float, default=None, help="Override RR1 target (default: 2.0)")
-    parser.add_argument("--rr2", type=float, default=None, help="Override RR2 target (analytics only)")
+    parser.add_argument(
+        "--rr1", type=float, default=None, help="Override RR1 target (default: 2.0)"
+    )
+    parser.add_argument(
+        "--rr2", type=float, default=None, help="Override RR2 target (analytics only)"
+    )
     parser.add_argument("--output-dir", type=Path, default=None, help="CSV export directory (v2b)")
 
     args = parser.parse_args()
@@ -121,14 +125,18 @@ def _run_v2(args: argparse.Namespace, app_config: object, m15_df: object, m1_df:
 
     # Validate exit mode
     if exit_mode in (ExitMode.STOCH, ExitMode.COMBINED):
-        print(f"[backtest] error: --exit-mode {exit_mode.value} not yet implemented (coming in v2b)")
+        print(
+            f"[backtest] error: --exit-mode {exit_mode.value} not yet implemented (coming in v2b)"
+        )
         sys.exit(1)
 
     risk_config = app_config.risk_context  # type: ignore[attr-defined]
 
     if exit_mode is ExitMode.SLTP:
         if not risk_config.enabled and args.sl_mult is None:
-            print("[backtest] error: --exit-mode sltp requires risk_context.enabled=True or --sl-mult")
+            print(
+                "[backtest] error: --exit-mode sltp requires risk_context.enabled=True or --sl-mult"
+            )
             sys.exit(1)
 
     if exit_mode is ExitMode.SLTP and args.hold_minutes != 15:

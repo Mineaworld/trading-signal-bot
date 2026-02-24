@@ -73,7 +73,12 @@ class TestScanLegacy:
     def test_empty_data_returns_empty(self) -> None:
         strategy = StrategyEvaluator(params=PARAMS)
         result = scan_signals(
-            strategy, "XAUUSD", pd.DataFrame(), pd.DataFrame(), SignalMode.LEGACY, PARAMS,
+            strategy,
+            "XAUUSD",
+            pd.DataFrame(),
+            pd.DataFrame(),
+            SignalMode.LEGACY,
+            PARAMS,
         )
         assert result == []
 
@@ -170,7 +175,12 @@ class TestScanAll:
             with patch("backtester.signal_scanner._scan_chain", return_value=[sig]):
                 with patch("backtester.signal_scanner._scan_m1", return_value=[sig]):
                     result = scan_signals(
-                        strategy, "XAUUSD", m15, m1, SignalMode.ALL, PARAMS,
+                        strategy,
+                        "XAUUSD",
+                        m15,
+                        m1,
+                        SignalMode.ALL,
+                        PARAMS,
                     )
 
         # All three return same signal -> dedup to 1
@@ -193,7 +203,12 @@ class TestScanAll:
             with patch("backtester.signal_scanner._scan_chain", return_value=[]):
                 with patch("backtester.signal_scanner._scan_m1", return_value=[sig2]):
                     result = scan_signals(
-                        strategy, "XAUUSD", m15, m1, SignalMode.ALL, PARAMS,
+                        strategy,
+                        "XAUUSD",
+                        m15,
+                        m1,
+                        SignalMode.ALL,
+                        PARAMS,
                     )
 
         assert len(result) == 2
