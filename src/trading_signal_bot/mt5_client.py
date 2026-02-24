@@ -6,6 +6,7 @@ import random
 import subprocess
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, cast
 
 import pandas as pd
@@ -200,6 +201,41 @@ class MT5Client:
         )
         if rates is None or len(rates) == 0:
             raise RuntimeError(f"failed to fetch candles for {broker_symbol}: {self._last_error()}")
+
+        df = pd.DataFrame(rates)
+        if "time" not in df.columns:
+            raise RuntimeError("MT5 response missing 'time' field")
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+        expected = ["time", "open", "high", "low", "close", "tick_volume"]
+        missing = [col for col in expected if col not in df.columns]
+        if missing:
+            raise RuntimeError(f"MT5 response missing required columns: {', '.join(missing)}")
+        return df[expected].sort_values("time").reset_index(drop=True)
+
+    def fetch_candles_range(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        start_utc: datetime,
+        end_utc: datetime,
+    ) -> pd.DataFrame:
+        """Fetch candles between two UTC datetimes using copy_rates_range."""
+        broker_symbol = self._resolve_symbol(symbol)
+        if not self.is_connected() and not self.reconnect():
+            raise RuntimeError("mt5 disconnected and reconnect failed")
+
+        if self._mt5.symbol_info(broker_symbol) is None:
+            raise RuntimeError(f"symbol unavailable in MT5: {broker_symbol}")
+        self._mt5.symbol_select(broker_symbol, True)
+
+        rates = self._mt5.copy_rates_range(
+            broker_symbol, self._to_mt5_timeframe(timeframe), start_utc, end_utc
+        )
+        if rates is None or len(rates) == 0:
+            raise RuntimeError(
+                f"failed to fetch candles for {broker_symbol} "
+                f"range={start_utc}..{end_utc}: {self._last_error()}"
+            )
 
         df = pd.DataFrame(rates)
         if "time" not in df.columns:

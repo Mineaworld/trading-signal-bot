@@ -40,14 +40,19 @@ def load_historical(
         if not cached_windowed.empty:
             return cached_windowed.reset_index(drop=True)
 
-    # Pull a wide recent window, then trim to requested bounds.
-    lookback_minutes = max(1, int((datetime.now(timezone.utc) - start_utc).total_seconds() // 60))
-    tf_minutes = 1 if timeframe is Timeframe.M1 else 15
-    needed_bars = max(450, (lookback_minutes // tf_minutes) + 2000)
-    print(f"[backtest] loading {symbol} {timeframe.value} from MT5 count={needed_bars}", flush=True)
+    print(
+        f"[backtest] loading {symbol} {timeframe.value} from MT5 " f"range={start_utc}..{end_utc}",
+        flush=True,
+    )
     try:
-        df = mt5_client.fetch_candles(symbol=symbol, timeframe=timeframe, count=needed_bars)
-    except RuntimeError:
+        df = mt5_client.fetch_candles_range(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_utc=start_utc,
+            end_utc=end_utc,
+        )
+    except RuntimeError as exc:
+        print(f"[backtest] warning: fetch failed for {symbol} {timeframe.value}: {exc}", flush=True)
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "tick_volume"])
 
     df = df.drop_duplicates(subset=["time"]).sort_values("time")
@@ -60,7 +65,10 @@ def load_historical(
             f"loaded_range={loaded_oldest}..{loaded_newest} requested={start_utc}..{end_utc}",
             flush=True,
         )
-    windowed.to_csv(cache_file, index=False)
+
+    # Only cache non-empty results to prevent poisoning
+    if not windowed.empty:
+        windowed.to_csv(cache_file, index=False)
     return windowed.reset_index(drop=True)
 
 
