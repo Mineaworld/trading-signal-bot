@@ -18,6 +18,13 @@ class _FakeMT5Client:
         self.calls += 1
         return self._candles.copy()
 
+    def fetch_candles_range(
+        self, symbol: str, timeframe: Timeframe, start_utc: datetime, end_utc: datetime
+    ) -> pd.DataFrame:
+        _ = (symbol, timeframe)
+        self.calls += 1
+        return self._candles.copy()
+
 
 def test_load_historical_uses_distinct_cache_per_intraday_range(tmp_path) -> None:
     times = pd.date_range("2026-02-11 00:00:00", periods=24 * 60, freq="1min", tz="UTC")
