@@ -578,6 +578,14 @@ class TradingSignalBotApp:
             )
             if updated_pending is not None:
                 updated_map[key] = updated_pending
+                if signal is None:
+                    self._logger.debug(
+                        "chain pending held for %s dir=%s mode=%s state=%s",
+                        symbol,
+                        pending.direction.value,
+                        pending.mode.value,
+                        updated_pending.state.value,
+                    )
             if signal is not None:
                 chain_signals.append(signal)
 
