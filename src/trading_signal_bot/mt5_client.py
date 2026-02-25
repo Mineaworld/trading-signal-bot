@@ -228,8 +228,11 @@ class MT5Client:
             raise RuntimeError(f"symbol unavailable in MT5: {broker_symbol}")
         self._mt5.symbol_select(broker_symbol, True)
 
+        # MT5 copy_rates_range requires tz-naive datetimes (assumes UTC)
+        start_naive = start_utc.replace(tzinfo=None)
+        end_naive = end_utc.replace(tzinfo=None)
         rates = self._mt5.copy_rates_range(
-            broker_symbol, self._to_mt5_timeframe(timeframe), start_utc, end_utc
+            broker_symbol, self._to_mt5_timeframe(timeframe), start_naive, end_naive
         )
         if rates is None or len(rates) == 0:
             raise RuntimeError(
