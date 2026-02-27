@@ -6,6 +6,8 @@ from enum import Enum
 
 from trading_signal_bot.models import Direction, Signal
 
+from .grading import compute_grade
+
 
 class ExitReason(str, Enum):
     """Why a trade was closed."""
@@ -33,6 +35,7 @@ class RecordedTrade:
     sl_price: float | None = None
     tp1_price: float | None = None
     tp2_price: float | None = None
+    grade: str = ""
 
 
 def _entry_time(signal: Signal) -> datetime:
@@ -66,6 +69,7 @@ def make_trade(
         sl_price=sl_price,
         tp1_price=tp1_price,
         tp2_price=tp2_price,
+        grade=compute_grade(signal.scenario).value,
     )
 
 
@@ -89,4 +93,5 @@ def time_based_outcome(
         exit_time_utc=future_time_utc,
         pnl=pnl,
         exit_reason=ExitReason.TIME,
+        grade=compute_grade(signal.scenario).value,
     )

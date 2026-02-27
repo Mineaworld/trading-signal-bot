@@ -27,6 +27,7 @@ def _trade(
     sl: float | None = None,
     tp1: float | None = None,
     tp2: float | None = None,
+    grade: str = "A",
 ) -> RecordedTrade:
     """Helper to build a RecordedTrade with minimal fields."""
     entry = 100.0
@@ -45,6 +46,7 @@ def _trade(
         sl_price=sl,
         tp1_price=tp1,
         tp2_price=tp2,
+        grade=grade,
     )
 
 
@@ -218,6 +220,41 @@ class TestFormatReport:
         assert "Backtest Report" in text
         assert "Win Rate" in text
         assert "Profit Factor" in text
+        assert "By Grade" in text
+
+
+class TestByGradeGrouping:
+    """By-grade grouping correctness."""
+
+    def test_by_grade(self) -> None:
+        trades = [
+            _trade(pnl=5.0, grade="A+"),
+            _trade(pnl=-2.0, grade="A+"),
+            _trade(pnl=3.0, grade="A"),
+            _trade(pnl=1.0, grade="B"),
+            _trade(pnl=-1.0, grade="B"),
+        ]
+        report = build_report(trades)
+        assert "A+" in report.by_grade
+        assert "A" in report.by_grade
+        assert "B" in report.by_grade
+        assert report.by_grade["A+"].total == 2
+        assert report.by_grade["A+"].wins == 1
+        assert report.by_grade["A"].total == 1
+        assert report.by_grade["A"].wins == 1
+        assert report.by_grade["B"].total == 2
+        assert report.by_grade["B"].wins == 1
+
+    def test_format_report_includes_grade(self) -> None:
+        trades = [
+            _trade(pnl=5.0, grade="A+"),
+            _trade(pnl=3.0, grade="B"),
+        ]
+        report = build_report(trades)
+        text = format_report(report)
+        assert "--- By Grade ---" in text
+        assert "A+" in text
+        assert "B" in text
 
 
 class TestCsvExport:
@@ -246,4 +283,5 @@ class TestCsvExport:
         lines = csv_path.read_text().strip().split("\n")
         assert "signal_id" in lines[0]
         assert "exit_reason" in lines[0]
+        assert "grade" in lines[0]
         assert len(lines) == 3  # header + 2 trades
