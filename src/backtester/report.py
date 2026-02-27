@@ -41,6 +41,7 @@ class BacktestReport:
     max_consecutive_losses: int = 0
     by_scenario: dict[str, ScenarioStats] = field(default_factory=dict)
     by_direction: dict[str, ScenarioStats] = field(default_factory=dict)
+    by_grade: dict[str, ScenarioStats] = field(default_factory=dict)
     exit_reason_counts: dict[str, int] = field(default_factory=dict)
 
 
@@ -86,6 +87,9 @@ def build_report(trades: list[RecordedTrade]) -> BacktestReport:
     # By direction
     by_direction = _group_stats(trades, key_fn=lambda t: t.direction.value)
 
+    # By grade
+    by_grade = _group_stats(trades, key_fn=lambda t: t.grade)
+
     # Exit reason counts
     exit_reason_counts: dict[str, int] = defaultdict(int)
     for t in trades:
@@ -108,6 +112,7 @@ def build_report(trades: list[RecordedTrade]) -> BacktestReport:
         max_consecutive_losses=max_consecutive_losses,
         by_scenario=dict(by_scenario),
         by_direction=dict(by_direction),
+        by_grade=dict(by_grade),
         exit_reason_counts=dict(exit_reason_counts),
     )
 
@@ -146,6 +151,12 @@ def format_report(report: BacktestReport, config: object | None = None) -> str:
         lines.append(
             f"  {direction}: {stats.total} trades, {wr:.1f}% win, PnL={stats.total_pnl:.5f}"
         )
+
+    lines.append("")
+    lines.append("--- By Grade ---")
+    for grade, stats in sorted(report.by_grade.items()):
+        wr = (stats.wins / stats.total) * 100.0 if stats.total > 0 else 0.0
+        lines.append(f"  {grade}: {stats.total} trades, {wr:.1f}% win, PnL={stats.total_pnl:.5f}")
 
     lines.append("")
     lines.append("--- Exit Reasons ---")
@@ -189,6 +200,7 @@ def export_trade_log(trades: list[RecordedTrade], path: Path) -> None:
                 "sl_price",
                 "tp1_price",
                 "tp2_price",
+                "grade",
             ]
         )
         for trade in trades:
@@ -207,6 +219,7 @@ def export_trade_log(trades: list[RecordedTrade], path: Path) -> None:
                     f"{trade.sl_price:.5f}" if trade.sl_price is not None else "",
                     f"{trade.tp1_price:.5f}" if trade.tp1_price is not None else "",
                     f"{trade.tp2_price:.5f}" if trade.tp2_price is not None else "",
+                    trade.grade,
                 ]
             )
 
